@@ -49,6 +49,13 @@ export const tools: ToolDefinition[] = [
     shortDescription: '恒生指數及港股持倉的即時市值與今日盈虧',
     icon: '📈',
   },
+  {
+    id: 'crypto',
+    path: '/tools/crypto',
+    name: '加密貨幣',
+    shortDescription: '加密貨幣持倉市值、24 小時盈虧及市場數據',
+    icon: '🪙',
+  },
 ]
 
 export function findToolByPath(path: string): ToolDefinition | undefined {

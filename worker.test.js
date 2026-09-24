@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from 'vitest'
-import { handleApi, handleQuotes } from './worker.js'
+import { handleApi, handleCrypto, handleQuotes } from './worker.js'
 
 const env = {
   SUPABASE_URL: 'https://example.supabase.co/',
@@ -106,5 +106,118 @@ describe('handleQuotes', () => {
     expect((await handleQuotes(quoteRequest('?codes=HSI', 'POST'), vi.fn())).status).toBe(405)
     const failing = vi.fn().mockRejectedValue(new Error('down'))
     expect((await handleQuotes(quoteRequest('?codes=HSI'), failing)).status).toBe(502)
+  })
+})
+
+function memoryCache() {
+  const store = new Map()
+  return {
+    store,
+    match: async (request) => store.get(request.url)?.clone(),
+    put: async (request, response) => {
+      store.set(request.url, response.clone())
+    },
+  }
+}
+
+const PAPRIKA_TICKERS = [
+  { id: 'eth-ethereum', symbol: 'ETH', name: 'Ethereum', rank: 2, quotes: { USD: { price: 2600 }, HKD: { price: 20280, percent_change_24h: 4, market_cap: 2.4e12 } } },
+  { id: 'btc-bitcoin', symbol: 'BTC', name: 'Bitcoin', rank: 1, quotes: { USD: { price: 84000 }, HKD: { price: 655200, percent_change_24h: -0.5, market_cap: 13e12 } } },
+  { id: 'fake-btc', symbol: 'BTC', name: 'Fake', rank: 0, quotes: { USD: { price: 1 }, HKD: { price: 7.8 } } },
+]
+
+function paprikaFetch() {
+  return vi.fn((url) =>
+    Promise.resolve(
+      new Response(
+        JSON.stringify(
+          url.endsWith('/global')
+            ? { market_cap_usd: 3e12, market_cap_change_24h: -0.8, bitcoin_dominance_percentage: 56.3 }
+            : PAPRIKA_TICKERS,
+        ),
+        { status: 200 },
+      ),
+    ),
+  )
+}
+
+function coingeckoFetch() {
+  return vi.fn((url) =>
+    Promise.resolve(
+      new Response(JSON.stringify(url.endsWith('/global') ? { data: { btc: 1 } } : [{ symbol: 'btc' }]), { status: 200 }),
+    ),
+  )
+}
+
+function cryptoRequest(query, method = 'GET') {
+  return new Request(`https://small-tools.test/api/crypto${query}`, { method })
+}
+
+describe('handleCrypto', () => {
+  it('uses CoinPaprika by default, reshaped to the CoinGecko fields, and caches it', async () => {
+    const fetchMock = paprikaFetch()
+    const cache = memoryCache()
+
+    const body = await (await handleCrypto(cryptoRequest('?symbols=ETH,btc'), {}, fetchMock, cache)).json()
+    expect(body.top.map((coin) => coin.symbol)).toEqual(['btc', 'eth'])
+    expect(body.held.map((coin) => coin.id)).toEqual(['btc-bitcoin', 'eth-ethereum'])
+    expect(body.held[1]).toMatchObject({
+      name: 'Ethereum',
+      market_cap_rank: 2,
+      current_price: 20280,
+      price_change_percentage_24h: 4,
+      market_cap: 2.4e12,
+      image: 'https://static.coinpaprika.com/coin/eth-ethereum/logo.png',
+    })
+    expect(body.held[1].price_change_24h).toBeCloseTo(780)
+    expect(body.global).toEqual({
+      total_market_cap: { hkd: 3e12 * 7.8 },
+      market_cap_change_percentage_24h_usd: -0.8,
+      market_cap_percentage: { btc: 56.3 },
+    })
+    expect(fetchMock.mock.calls.map(([url]) => url)).toContain('https://api.coinpaprika.com/v1/tickers?quotes=USD,HKD&limit=500')
+
+    await handleCrypto(cryptoRequest('?symbols=btc,eth'), {}, fetchMock, cache)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('uses CoinGecko when a demo API key is configured', async () => {
+    const fetchMock = coingeckoFetch()
+    const body = await (
+      await handleCrypto(cryptoRequest('?symbols=btc'), { COINGECKO_API_KEY: 'demo' }, fetchMock, memoryCache())
+    ).json()
+    expect(body).toEqual({ top: [{ symbol: 'btc' }], held: [{ symbol: 'btc' }], global: { btc: 1 } })
+    expect(fetchMock.mock.calls.map(([url]) => url)).toContain(
+      'https://api.coingecko.com/api/v3/coins/markets?vs_currency=hkd&symbols=btc&include_tokens=top',
+    )
+    expect(fetchMock.mock.calls[0][1].headers).toMatchObject({ 'x-cg-demo-api-key': 'demo', 'User-Agent': 'small-tools/1.0' })
+  })
+
+  it('serves stale data when the upstream fails, and 502 when there is none', async () => {
+    const cache = memoryCache()
+    await handleCrypto(cryptoRequest('?symbols=btc'), {}, paprikaFetch(), cache)
+    const [key, stored] = [...cache.store.entries()][0]
+    const headers = new Headers(stored.headers)
+    headers.set('X-Fetched-At', String(Date.now() - 5 * 60 * 1000))
+    cache.store.set(key, new Response(await stored.text(), { headers }))
+
+    const limited = vi.fn().mockResolvedValue(new Response('', { status: 429 }))
+    const stale = await handleCrypto(cryptoRequest('?symbols=btc'), {}, limited, cache)
+    expect(stale.status).toBe(200)
+    expect((await stale.json()).top[0].symbol).toBe('btc')
+
+    const failed = await handleCrypto(cryptoRequest('?symbols=eth'), {}, limited, memoryCache())
+    expect(failed.status).toBe(502)
+    expect(await failed.json()).toEqual({ error: 'Upstream unavailable', detail: 'CoinPaprika 429' })
+  })
+
+  it.each(['?symbols=bt c', '?symbols=btc;eth', `?symbols=${'a'.repeat(16)}`])('rejects %s', async (query) => {
+    const fetchMock = vi.fn()
+    expect((await handleCrypto(cryptoRequest(query), {}, fetchMock, memoryCache())).status).toBe(400)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects non-GET', async () => {
+    expect((await handleCrypto(cryptoRequest('', 'POST'), {}, vi.fn(), memoryCache())).status).toBe(405)
   })
 })

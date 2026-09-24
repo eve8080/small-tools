@@ -8,6 +8,11 @@
 //
 // It also exposes /api/hk-quotes?codes=HSI,00001,... — public Hong Kong market quotes
 // (Hang Seng Index and HK stocks) from Tencent's quote feed, which browsers can't call directly.
+//
+// And /api/crypto?symbols=btc,eth — crypto market data (top 10 coins, the held coins, global
+// totals) in HKD, cached at the edge for a minute. It comes from CoinPaprika's free API, which
+// needs no key; CoinGecko's keyless API rate-limits Cloudflare's shared IPs (HTTP 429).
+// Optional secret: COINGECKO_API_KEY — with a free CoinGecko "demo" key, CoinGecko is used instead.
 
 const ALLOWED_TABLES = new Set(['asset_positions', 'asset_categories', 'dashboard_positions'])
 const ALLOWED_PARAMS = new Set(['select', 'order', 'limit', 'offset', 'is_active'])
@@ -140,11 +145,149 @@ export async function handleQuotes(request, fetchFn = fetch) {
   return json({ quotes: parseTencentQuotes(await upstream.text()) })
 }
 
+const CRYPTO_SYMBOL = /^[a-z0-9]{1,15}$/
+const MAX_CRYPTO_SYMBOLS = 50
+const COINGECKO_API = 'https://api.coingecko.com/api/v3'
+const CRYPTO_FRESH_MS = 60 * 1000
+// Keep a stale copy for a while so a CoinGecko rate limit or outage still shows recent data.
+const CRYPTO_STALE_SECONDS = 60 * 60
+
+async function coingecko(path, env, fetchFn) {
+  // CoinGecko rejects requests without a User-Agent (403), and Workers don't send one by default.
+  const headers = { Accept: 'application/json', 'User-Agent': 'small-tools/1.0' }
+  if (env.COINGECKO_API_KEY) headers['x-cg-demo-api-key'] = env.COINGECKO_API_KEY
+  const response = await fetchFn(`${COINGECKO_API}${path}`, { headers })
+  if (!response.ok) throw new Error(`CoinGecko ${response.status}`)
+  return response.json()
+}
+
+const COINPAPRIKA_API = 'https://api.coinpaprika.com/v1'
+
+async function coinpaprika(path, fetchFn) {
+  const response = await fetchFn(`${COINPAPRIKA_API}${path}`, {
+    headers: { Accept: 'application/json', 'User-Agent': 'small-tools/1.0' },
+  })
+  if (!response.ok) throw new Error(`CoinPaprika ${response.status}`)
+  return response.json()
+}
+
+// Reshape a CoinPaprika ticker into the CoinGecko /coins/markets fields the app reads.
+function paprikaToMarket(ticker) {
+  const hkd = ticker.quotes?.HKD ?? {}
+  const percent = typeof hkd.percent_change_24h === 'number' ? hkd.percent_change_24h : null
+  const price = hkd.price
+  return {
+    id: ticker.id,
+    symbol: String(ticker.symbol).toLowerCase(),
+    name: ticker.name,
+    image: `https://static.coinpaprika.com/coin/${ticker.id}/logo.png`,
+    market_cap_rank: ticker.rank,
+    current_price: price,
+    price_change_24h: percent === null || typeof price !== 'number' ? null : price - price / (1 + percent / 100),
+    price_change_percentage_24h: percent,
+    market_cap: hkd.market_cap,
+  }
+}
+
+async function loadFromCoinPaprika(symbols, fetchFn) {
+  const [tickers, global] = await Promise.all([
+    // Ranked by market cap; the top 500 covers the held coins without a lookup per symbol.
+    coinpaprika('/tickers?quotes=USD,HKD&limit=500', fetchFn),
+    coinpaprika('/global', fetchFn).catch(() => null),
+  ])
+
+  const ranked = tickers
+    .filter((ticker) => ticker.rank > 0 && typeof ticker.quotes?.HKD?.price === 'number')
+    .sort((a, b) => a.rank - b.rank)
+  const wanted = new Set(symbols)
+  const held = ranked.filter((ticker) => wanted.has(String(ticker.symbol).toLowerCase())).map(paprikaToMarket)
+
+  const btc = ranked.find((ticker) => ticker.id === 'btc-bitcoin')
+  const usdToHkd = btc ? btc.quotes.HKD.price / btc.quotes.USD.price : null
+  return {
+    top: ranked.slice(0, 10).map(paprikaToMarket),
+    held,
+    global: global
+      ? {
+          total_market_cap: { hkd: usdToHkd ? global.market_cap_usd * usdToHkd : null },
+          market_cap_change_percentage_24h_usd: global.market_cap_change_24h,
+          market_cap_percentage: { btc: global.bitcoin_dominance_percentage },
+        }
+      : null,
+  }
+}
+
+async function loadCryptoMarket(symbols, env, fetchFn) {
+  if (!env.COINGECKO_API_KEY) return loadFromCoinPaprika(symbols, fetchFn)
+
+  const [top, held, global] = await Promise.all([
+    coingecko('/coins/markets?vs_currency=hkd&order=market_cap_desc&per_page=10&page=1', env, fetchFn),
+    symbols.length > 0
+      ? coingecko(`/coins/markets?vs_currency=hkd&symbols=${symbols.join(',')}&include_tokens=top`, env, fetchFn)
+      : [],
+    coingecko('/global', env, fetchFn).then(
+      (body) => body.data ?? null,
+      () => null,
+    ),
+  ])
+  return { top, held, global }
+}
+
+export async function handleCrypto(request, env, fetchFn = fetch, cache = globalThis.caches?.default) {
+  if (request.method !== 'GET') {
+    return json({ error: 'Method not allowed' }, 405)
+  }
+
+  const symbols = [
+    ...new Set(
+      (new URL(request.url).searchParams.get('symbols') ?? '')
+        .split(',')
+        .map((symbol) => symbol.trim().toLowerCase())
+        .filter(Boolean),
+    ),
+  ].sort()
+  if (symbols.length > MAX_CRYPTO_SYMBOLS || !symbols.every((symbol) => CRYPTO_SYMBOL.test(symbol))) {
+    return json({ error: 'Invalid symbols' }, 400)
+  }
+
+  const cacheKey = new Request(`https://small-tools.cache/crypto?symbols=${symbols.join(',')}`)
+  const cached = cache ? await cache.match(cacheKey) : undefined
+  const cachedAt = Number(cached?.headers.get('X-Fetched-At') ?? 0)
+  if (cached && Date.now() - cachedAt < CRYPTO_FRESH_MS) {
+    return json(await cached.json())
+  }
+
+  let body
+  try {
+    body = await loadCryptoMarket(symbols, env, fetchFn)
+  } catch (error) {
+    if (cached) return json(await cached.json())
+    return json({ error: 'Upstream unavailable', detail: String(error?.message ?? error) }, 502)
+  }
+
+  if (cache) {
+    await cache.put(
+      cacheKey,
+      new Response(JSON.stringify(body), {
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': `max-age=${CRYPTO_STALE_SECONDS}`,
+          'X-Fetched-At': String(Date.now()),
+        },
+      }),
+    )
+  }
+  return json(body)
+}
+
 export default {
   async fetch(request, env) {
     const { pathname } = new URL(request.url)
     if (pathname === '/api/hk-quotes') {
       return handleQuotes(request)
+    }
+    if (pathname === '/api/crypto') {
+      return handleCrypto(request, env)
     }
     if (pathname.startsWith('/api/')) {
       return handleApi(request, env)

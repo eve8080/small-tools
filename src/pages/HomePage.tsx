@@ -4,11 +4,13 @@ import { tools } from '../app/tools'
 import HkWeatherCardPreview from '../features/hk-weather/HkWeatherCardPreview'
 import AssetsCardPreview from '../features/assets/AssetsCardPreview'
 import HkStocksCardPreview from '../features/hk-stocks/HkStocksCardPreview'
+import CryptoCardPreview from '../features/crypto/CryptoCardPreview'
 
 const cardPreviews: Record<string, ComponentType> = {
   'hk-weather': HkWeatherCardPreview,
   assets: AssetsCardPreview,
   'hk-stocks': HkStocksCardPreview,
+  crypto: CryptoCardPreview,
 }
 
 export default function HomePage() {

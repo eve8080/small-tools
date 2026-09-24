@@ -58,6 +58,10 @@ export default defineConfig({
             urlPattern: /^https:\/\/data\.weather\.gov\.hk\/weatherAPI\//,
             handler: 'NetworkOnly',
           },
+          {
+            urlPattern: /^https:\/\/(coin-images\.coingecko\.com|static\.coinpaprika\.com)\//,
+            handler: 'NetworkOnly',
+          },
         ],
       },
     }),

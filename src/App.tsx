@@ -8,6 +8,7 @@ import QrCodeTool from './features/qr-code/QrCodeTool'
 import HkWeatherTool from './features/hk-weather/HkWeatherTool'
 import AssetsTool from './features/assets/AssetsTool'
 import HkStocksTool from './features/hk-stocks/HkStocksTool'
+import CryptoTool from './features/crypto/CryptoTool'
 
 function NotFoundPage() {
   return (
@@ -30,6 +31,7 @@ export default function App() {
           <Route path="/tools/hk-weather" element={<HkWeatherTool />} />
           <Route path="/tools/assets" element={<AssetsTool />} />
           <Route path="/tools/hk-stocks" element={<HkStocksTool />} />
+          <Route path="/tools/crypto" element={<CryptoTool />} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Routes>
