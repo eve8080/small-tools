@@ -5,6 +5,7 @@ import HomePage from './pages/HomePage'
 import UrlShortenerTool from './features/url-shortener/UrlShortenerTool'
 import PomodoroTool from './features/pomodoro/PomodoroTool'
 import QrCodeTool from './features/qr-code/QrCodeTool'
+import HkWeatherTool from './features/hk-weather/HkWeatherTool'
 
 function NotFoundPage() {
   return (
@@ -24,6 +25,7 @@ export default function App() {
           <Route path="/tools/url-shortener" element={<UrlShortenerTool />} />
           <Route path="/tools/pomodoro" element={<PomodoroTool />} />
           <Route path="/tools/qr-code" element={<QrCodeTool />} />
+          <Route path="/tools/hk-weather" element={<HkWeatherTool />} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Routes>

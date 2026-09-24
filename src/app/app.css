@@ -356,6 +356,77 @@
   text-align: center;
 }
 
+/* Hong Kong clock & weather */
+
+.hk-weather {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.hk-clock {
+  text-align: center;
+}
+
+.hk-clock-time {
+  font-size: clamp(2.75rem, 11vw, 4rem);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--color-accent);
+}
+
+.hk-clock-date {
+  color: var(--color-text-muted);
+}
+
+.hk-weather-now {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.hk-weather-icon {
+  font-size: 2.75rem;
+  line-height: 1;
+}
+
+.hk-weather-temp {
+  font-size: 2rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.hk-weather-meta {
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+}
+
+.hk-weather-warnings {
+  margin-top: 0;
+  padding-left: var(--space-6);
+}
+
+.hk-weather-forecast {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  line-height: 1.6;
+}
+
+.hk-weather-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
 @media (max-width: 640px) {
   .shell-main {
     padding-top: var(--space-5);

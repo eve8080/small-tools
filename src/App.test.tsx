@@ -1,5 +1,5 @@
 import { render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import { tools } from './app/tools'
 
@@ -8,8 +8,13 @@ function renderAt(path: string) {
   return render(<App />)
 }
 
+beforeEach(() => {
+  vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('offline')))
+})
+
 afterEach(() => {
   window.history.pushState({}, '', '/')
+  vi.unstubAllGlobals()
 })
 
 describe('App routing', () => {

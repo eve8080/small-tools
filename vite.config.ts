@@ -13,7 +13,7 @@ export default defineConfig({
         id: '/',
         name: 'Small Tools',
         short_name: 'Small Tools',
-        description: '一站式小工具儀表板：短網址、番茄鐘、QR Code 產生器。',
+        description: '一站式小工具儀表板：短網址、番茄鐘、QR Code 產生器、香港時鐘與天氣。',
         lang: 'zh-HK',
         start_url: '/',
         scope: '/',
@@ -45,6 +45,10 @@ export default defineConfig({
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/is\.gd\/create\.php/,
+            handler: 'NetworkOnly',
+          },
+          {
+            urlPattern: /^https:\/\/data\.weather\.gov\.hk\/weatherAPI\//,
             handler: 'NetworkOnly',
           },
         ],

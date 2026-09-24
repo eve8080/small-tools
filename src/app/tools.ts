@@ -28,6 +28,13 @@ export const tools: ToolDefinition[] = [
     shortDescription: '將文字或網址即時轉成可下載的 QR Code',
     icon: '⬛',
   },
+  {
+    id: 'hk-weather',
+    path: '/tools/hk-weather',
+    name: '香港時鐘與天氣',
+    shortDescription: '顯示香港時間及天文台最新天氣',
+    icon: '🌤️',
+  },
 ]
 
 export function findToolByPath(path: string): ToolDefinition | undefined {
