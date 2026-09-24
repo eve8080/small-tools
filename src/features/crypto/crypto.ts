@@ -30,11 +30,19 @@ export interface CryptoMarketData {
 
 export type CryptoMarketResult = { ok: true; data: CryptoMarketData } | { ok: false; error: string }
 
+/** The last price saved in Supabase, used when live market data is unavailable. */
+export interface StoredPrice {
+  amount: number
+  currency: string
+  date: string | null
+}
+
 export interface CryptoHoldingRow {
   symbol: string
   name: string
   quantity: number | null
   coin: CoinMarket | null
+  storedPrice: StoredPrice | null
   valueHkd: number
   change24hHkd: number | null
 }
@@ -42,7 +50,8 @@ export interface CryptoHoldingRow {
 export interface CryptoHoldingsSummary {
   rows: CryptoHoldingRow[]
   totalHkd: number
-  change24hHkd: number
+  /** null when no holding has live market data, so there is no 24h change to report. */
+  change24hHkd: number | null
   change24hPercent: number | null
   complete: boolean
 }
@@ -114,6 +123,14 @@ export async function fetchCryptoMarket(
   }
 }
 
+// Prefer the HKD unit price implied by the stored HKD value; otherwise the stored price as-is.
+function storedPriceOf(position: AssetPosition): StoredPrice | null {
+  const { quantity, market_value_hkd: value, current_price: price } = position
+  if (quantity && value !== null) return { amount: value / quantity, currency: 'HKD', date: position.price_date }
+  if (price !== null) return { amount: price, currency: position.currency_code ?? 'HKD', date: position.price_date }
+  return null
+}
+
 export function summarizeCryptoHoldings(
   positions: AssetPosition[],
   held: Record<string, CoinMarket>,
@@ -138,11 +155,13 @@ export function summarizeCryptoHoldings(
         name: coin?.name ?? position.name ?? position.symbol ?? '—',
         quantity: position.quantity,
         coin,
+        storedPrice: storedPriceOf(position),
         valueHkd,
         change24hHkd,
       })
       continue
     }
+    existing.storedPrice ??= storedPriceOf(position)
     existing.quantity =
       existing.quantity !== null && position.quantity !== null ? existing.quantity + position.quantity : null
     existing.valueHkd += valueHkd
@@ -154,13 +173,14 @@ export function summarizeCryptoHoldings(
 
   const rows = [...groups.values()].sort((a, b) => b.valueHkd - a.valueHkd)
   const totalHkd = rows.reduce((sum, row) => sum + row.valueHkd, 0)
-  const change24hHkd = rows.reduce((sum, row) => sum + (row.change24hHkd ?? 0), 0)
-  const previousTotal = totalHkd - change24hHkd
+  const hasChange = rows.some((row) => row.change24hHkd !== null)
+  const change24hHkd = hasChange ? rows.reduce((sum, row) => sum + (row.change24hHkd ?? 0), 0) : null
+  const previousTotal = totalHkd - (change24hHkd ?? 0)
   return {
     rows,
     totalHkd,
     change24hHkd,
-    change24hPercent: previousTotal > 0 ? (change24hHkd / previousTotal) * 100 : null,
+    change24hPercent: change24hHkd !== null && previousTotal > 0 ? (change24hHkd / previousTotal) * 100 : null,
     complete,
   }
 }
@@ -174,10 +194,13 @@ export function formatCompactHkd(value: number): string {
   }).format(value)
 }
 
-export function formatCoinPrice(value: number): string {
-  return new Intl.NumberFormat('zh-HK', {
-    style: 'currency',
-    currency: 'HKD',
-    maximumFractionDigits: value >= 100 ? 0 : value >= 1 ? 2 : 6,
-  }).format(value)
+export function formatCoinPrice(value: number, currency = 'HKD'): string {
+  const digits = value >= 100 ? 0 : value >= 1 ? 2 : 6
+  const number = new Intl.NumberFormat('zh-HK', { maximumFractionDigits: digits }).format(value)
+  const prefix: Record<string, string> = { HKD: 'HK$', USD: 'US$' }
+  return `${prefix[currency] ?? `${currency} `}${number}`
+}
+
+export function formatStoredPrice(stored: StoredPrice): string {
+  return formatCoinPrice(stored.amount, stored.currency)
 }

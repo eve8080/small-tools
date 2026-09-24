@@ -16,7 +16,7 @@ const BTC = {
 }
 
 const POSITIONS = [
-  { name: 'Bitcoin', symbol: 'BTC', asset_class: '加密貨幣', quantity: 2, currency_code: 'USD', market_value_hkd: 1100000 },
+  { name: 'Bitcoin', symbol: 'BTC', asset_class: '加密貨幣', quantity: 2, current_price: 70000, currency_code: 'USD', market_value_hkd: 1100000, price_date: '2026-09-23' },
   { name: 'HKD Savings', symbol: null, asset_class: '現金存款', quantity: 1, currency_code: 'HKD', market_value_hkd: 5000 },
 ]
 
@@ -73,5 +73,26 @@ describe('CryptoTool', () => {
     expect(await screen.findByText('共 1 種加密貨幣')).toBeInTheDocument()
     expect(screen.getAllByText('HK$1,200,000').length).toBeGreaterThan(0)
     expect(screen.getByText(/24 小時 −HK\$12,000/)).toHaveAttribute('data-change', 'down')
+  })
+
+  it('shows Supabase prices and values when live market data is unavailable', async () => {
+    localStorage.setItem('small-tools:assets-password', 'pw')
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) =>
+        Promise.resolve(
+          url.startsWith('/api/asset_positions')
+            ? { ok: true, status: 200, json: () => Promise.resolve(POSITIONS) }
+            : { ok: false, status: 502, json: () => Promise.resolve({ error: 'Upstream unavailable' }) },
+        ),
+      ),
+    )
+    renderTool()
+
+    expect(await screen.findByText('共 1 種加密貨幣 · 部分以 Supabase 價格計算')).toBeInTheDocument()
+    expect(screen.getAllByText('HK$1,100,000').length).toBeGreaterThan(0)
+    expect(screen.getByText('HK$550,000')).toBeInTheDocument()
+    expect(screen.getByText('Supabase · 2026-09-23')).toBeInTheDocument()
+    expect(screen.getByText('24 小時 —')).toBeInTheDocument()
   })
 })

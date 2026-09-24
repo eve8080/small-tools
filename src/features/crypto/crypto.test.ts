@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { AssetPosition } from '../assets/assetsClient'
-import { fetchCryptoMarket, normalizeCryptoSymbol, summarizeCryptoHoldings, type CoinMarket } from './crypto'
+import {
+  fetchCryptoMarket,
+  formatStoredPrice,
+  normalizeCryptoSymbol,
+  summarizeCryptoHoldings,
+  type CoinMarket,
+} from './crypto'
 
 function position(overrides: Partial<AssetPosition>): AssetPosition {
   return {
@@ -64,11 +70,23 @@ describe('summarizeCryptoHoldings', () => {
     expect(summary.complete).toBe(true)
   })
 
-  it('falls back to the stored value when a coin has no market data', () => {
-    const summary = summarizeCryptoHoldings([position({ symbol: 'XYZ', quantity: 3, market_value_hkd: 1200 })], {})
+  it('falls back to the stored value and Supabase price when a coin has no market data', () => {
+    const summary = summarizeCryptoHoldings(
+      [position({ symbol: 'XYZ', quantity: 3, market_value_hkd: 1200, current_price: 51, price_date: '2026-09-23' })],
+      {},
+    )
     expect(summary.totalHkd).toBe(1200)
     expect(summary.rows[0].change24hHkd).toBeNull()
+    expect(summary.change24hHkd).toBeNull()
+    expect(summary.change24hPercent).toBeNull()
+    expect(summary.rows[0].storedPrice).toEqual({ amount: 400, currency: 'HKD', date: '2026-09-23' })
     expect(summary.complete).toBe(false)
+  })
+
+  it('uses the stored price and currency when there is no stored HKD value', () => {
+    const summary = summarizeCryptoHoldings([position({ symbol: 'BTC', quantity: 1, current_price: 84000 })], {})
+    expect(summary.rows[0].storedPrice).toEqual({ amount: 84000, currency: 'USD', date: null })
+    expect(formatStoredPrice(summary.rows[0].storedPrice!)).toBe('US$84,000')
   })
 })
 

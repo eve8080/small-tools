@@ -596,6 +596,12 @@
   font-size: 1.05rem;
 }
 
+.crypto-stored-price {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
 .crypto-coin {
   display: inline-flex;
   align-items: center;

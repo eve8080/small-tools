@@ -3,7 +3,7 @@ import { findToolByPath } from '../../app/tools'
 import { formatHkd } from '../assets/assetsClient'
 import PasswordForm from '../assets/PasswordForm'
 import { changeDirection, formatPercent, formatSignedHkd } from '../hk-stocks/hkStocks'
-import { formatCoinPrice, formatCompactHkd, type CoinMarket, type CryptoHoldingRow } from './crypto'
+import { formatCoinPrice, formatCompactHkd, formatStoredPrice, type CoinMarket, type CryptoHoldingRow } from './crypto'
 import { useCrypto } from './useCrypto'
 
 const tool = findToolByPath('/tools/crypto')!
@@ -34,7 +34,16 @@ function HoldingsTable({ rows }: { rows: CryptoHoldingRow[] }) {
                 {row.quantity === null ? '—' : quantityFormat.format(row.quantity)}
               </td>
               <td data-label="現價" data-numeric="true">
-                {row.coin ? formatCoinPrice(row.coin.priceHkd) : '—'}
+                {row.coin ? (
+                  formatCoinPrice(row.coin.priceHkd)
+                ) : row.storedPrice ? (
+                  <span className="crypto-stored-price">
+                    {formatStoredPrice(row.storedPrice)}
+                    <span className="field-hint">Supabase{row.storedPrice.date && ` · ${row.storedPrice.date}`}</span>
+                  </span>
+                ) : (
+                  '—'
+                )}
               </td>
               <td data-label="24 小時" data-numeric="true" data-change={changeDirection(row.coin?.change24hPercent ?? null)}>
                 {row.coin ? formatPercent(row.coin.change24hPercent) || '—' : '—'}
@@ -125,11 +134,11 @@ export default function CryptoTool() {
               <p className="field-hint">加密貨幣持倉總值</p>
               <p className="hk-stat-value">{formatHkd(summary.totalHkd)}</p>
               <p className="hk-stat-change" data-change={changeDirection(summary.change24hHkd)}>
-                24 小時 {formatSignedHkd(summary.change24hHkd)}
+                24 小時 {summary.change24hHkd === null ? '—' : formatSignedHkd(summary.change24hHkd)}
                 {summary.change24hPercent !== null && ` (${formatPercent(summary.change24hPercent)})`}
               </p>
               <p className="field-hint" role="status">
-                共 {summary.rows.length} 種加密貨幣{!summary.complete && ' · 部分未有即時報價'}
+                共 {summary.rows.length} 種加密貨幣{!summary.complete && ' · 部分以 Supabase 價格計算'}
               </p>
             </div>
           )}
