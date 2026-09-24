@@ -115,6 +115,27 @@
   line-height: 1.5;
 }
 
+/* Live card previews */
+
+.hk-card-preview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.hk-card-time {
+  font-size: 1.6rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-accent);
+}
+
+.hk-card-warning {
+  color: var(--color-error);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
 /* Tool pages */
 
 .tool-page-header {

@@ -23,4 +23,15 @@ describe('ToolCard', () => {
     expect(link).toHaveAttribute('href', '/tools/demo')
     expect(screen.getByText('這是一個示範描述')).toBeInTheDocument()
   })
+
+  it('renders live preview content in place of the description when provided', () => {
+    render(
+      <MemoryRouter>
+        <ToolCard tool={tool} preview={<span>即時內容</span>} />
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByRole('link', { name: /即時內容/ })).toHaveAttribute('href', '/tools/demo')
+    expect(screen.queryByText('這是一個示範描述')).not.toBeInTheDocument()
+  })
 })

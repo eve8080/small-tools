@@ -1,9 +1,8 @@
-import { useCallback, useEffect, useState } from 'react'
 import ToolPageHeader from '../../components/ToolPageHeader'
 import { findToolByPath } from '../../app/tools'
-import { fetchHongKongWeather, formatHongKongClock, type WeatherResult } from './hkWeather'
+import { formatHongKongClock } from './hkWeather'
+import { useHongKongWeather, useNow } from './useHkWeather'
 
-const REFRESH_INTERVAL_MS = 10 * 60 * 1000
 const tool = findToolByPath('/tools/hk-weather')!
 
 function formatUpdateTime(iso: string): string {
@@ -13,40 +12,8 @@ function formatUpdateTime(iso: string): string {
 }
 
 export default function HkWeatherTool() {
-  const [now, setNow] = useState(() => new Date())
-  const [loading, setLoading] = useState(true)
-  const [result, setResult] = useState<WeatherResult | null>(null)
-
-  useEffect(() => {
-    const intervalId = window.setInterval(() => setNow(new Date()), 1000)
-    return () => window.clearInterval(intervalId)
-  }, [])
-
-  const receiveWeather = useCallback((next: WeatherResult) => {
-    setResult(next)
-    setLoading(false)
-  }, [])
-
-  function loadWeather() {
-    setLoading(true)
-    void fetchHongKongWeather().then(receiveWeather)
-  }
-
-  useEffect(() => {
-    let active = true
-    const refresh = () =>
-      fetchHongKongWeather().then((next) => {
-        if (active) receiveWeather(next)
-      })
-
-    void refresh()
-    const intervalId = window.setInterval(refresh, REFRESH_INTERVAL_MS)
-    return () => {
-      active = false
-      window.clearInterval(intervalId)
-    }
-  }, [receiveWeather])
-
+  const now = useNow()
+  const { result, loading, refresh } = useHongKongWeather()
   const clock = formatHongKongClock(now)
   const weather = result?.ok ? result.weather : null
 
@@ -104,7 +71,7 @@ export default function HkWeatherTool() {
             資料來源：香港天文台
             {weather?.updateTime && `（更新於 ${formatUpdateTime(weather.updateTime)}）`}
           </p>
-          <button type="button" className="btn btn-secondary" onClick={loadWeather} disabled={loading}>
+          <button type="button" className="btn btn-secondary" onClick={refresh} disabled={loading}>
             {loading ? '更新中…' : '重新整理'}
           </button>
         </div>

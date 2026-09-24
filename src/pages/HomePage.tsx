@@ -1,5 +1,11 @@
+import type { ComponentType } from 'react'
 import ToolCard from '../components/ToolCard'
 import { tools } from '../app/tools'
+import HkWeatherCardPreview from '../features/hk-weather/HkWeatherCardPreview'
+
+const cardPreviews: Record<string, ComponentType> = {
+  'hk-weather': HkWeatherCardPreview,
+}
 
 export default function HomePage() {
   return (
@@ -9,9 +15,10 @@ export default function HomePage() {
         <p>日常好用的網頁小工具,一鍵開啟即用,持續加入更多工具。</p>
       </section>
       <section aria-label="工具列表" className="tool-grid">
-        {tools.map((tool) => (
-          <ToolCard key={tool.id} tool={tool} />
-        ))}
+        {tools.map((tool) => {
+          const Preview = cardPreviews[tool.id]
+          return <ToolCard key={tool.id} tool={tool} preview={Preview && <Preview />} />
+        })}
       </section>
     </div>
   )
