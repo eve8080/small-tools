@@ -3,10 +3,12 @@ import ToolCard from '../components/ToolCard'
 import { tools } from '../app/tools'
 import HkWeatherCardPreview from '../features/hk-weather/HkWeatherCardPreview'
 import AssetsCardPreview from '../features/assets/AssetsCardPreview'
+import HkStocksCardPreview from '../features/hk-stocks/HkStocksCardPreview'
 
 const cardPreviews: Record<string, ComponentType> = {
   'hk-weather': HkWeatherCardPreview,
   assets: AssetsCardPreview,
+  'hk-stocks': HkStocksCardPreview,
 }
 
 export default function HomePage() {

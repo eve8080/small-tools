@@ -42,6 +42,13 @@ export const tools: ToolDefinition[] = [
     shortDescription: '讀取並顯示 Supabase 的持倉數據',
     icon: '📊',
   },
+  {
+    id: 'hk-stocks',
+    path: '/tools/hk-stocks',
+    name: '恒指與港股',
+    shortDescription: '恒生指數及港股持倉的即時市值與今日盈虧',
+    icon: '📈',
+  },
 ]
 
 export function findToolByPath(path: string): ToolDefinition | undefined {

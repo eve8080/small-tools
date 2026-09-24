@@ -7,6 +7,7 @@ import PomodoroTool from './features/pomodoro/PomodoroTool'
 import QrCodeTool from './features/qr-code/QrCodeTool'
 import HkWeatherTool from './features/hk-weather/HkWeatherTool'
 import AssetsTool from './features/assets/AssetsTool'
+import HkStocksTool from './features/hk-stocks/HkStocksTool'
 
 function NotFoundPage() {
   return (
@@ -28,6 +29,7 @@ export default function App() {
           <Route path="/tools/qr-code" element={<QrCodeTool />} />
           <Route path="/tools/hk-weather" element={<HkWeatherTool />} />
           <Route path="/tools/assets" element={<AssetsTool />} />
+          <Route path="/tools/hk-stocks" element={<HkStocksTool />} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Routes>

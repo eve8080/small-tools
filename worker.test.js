@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from 'vitest'
-import { handleApi } from './worker.js'
+import { handleApi, handleQuotes } from './worker.js'
 
 const env = {
   SUPABASE_URL: 'https://example.supabase.co/',
@@ -66,5 +66,45 @@ describe('handleApi', () => {
     const response = await handleApi(apiRequest('/api/asset_positions'), env, fetchMock)
     expect(response.status).toBe(502)
     expect(await response.text()).not.toContain('secret detail')
+  })
+})
+
+const TENCENT_BODY = [
+  'v_r_hkHSI="100~name~HSI~24761.130~24834.120~24649.450~1~0~0~24761.130~0~0~0~0~0~0~0~0~0~24761.130~0~0~0~0~0~0~0~0~0~0.0~2026/09/24 16:08:39~-72.990~-0.29~24791.200";',
+  'v_r_hk00001="100~name~00001~68.100~67.600~67.750~1~0~0~68.100~0~0~0~0~0~0~0~0~0~68.100~0~0~0~0~0~0~0~0~0~1.0~2026/09/24 16:08:39~0.500~0.74~68.200";',
+  'v_pv_none_match="1";',
+].join('\n')
+
+function quoteRequest(query, method = 'GET') {
+  return new Request(`https://small-tools.test/api/hk-quotes${query}`, { method })
+}
+
+describe('handleQuotes', () => {
+  it('parses index and stock quotes from the upstream feed', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(TENCENT_BODY, { status: 200 }))
+    const response = await handleQuotes(quoteRequest('?codes=HSI,00001'), fetchMock)
+    expect(response.status).toBe(200)
+    expect(fetchMock).toHaveBeenCalledWith('https://qt.gtimg.cn/q=r_hkHSI,r_hk00001')
+    expect(await response.json()).toEqual({
+      quotes: {
+        HSI: { price: 24761.13, previousClose: 24834.12, change: -72.99, changePercent: -0.29, time: '2026/09/24 16:08:39' },
+        '00001': { price: 68.1, previousClose: 67.6, change: 0.5, changePercent: 0.74, time: '2026/09/24 16:08:39' },
+      },
+    })
+  })
+
+  it.each(['', '?codes=', '?codes=HSI,1', '?codes=HSI,00001;x', `?codes=${Array.from({ length: 61 }, (_, i) => String(i).padStart(5, '0')).join(',')}`])(
+    'rejects invalid codes %s without calling upstream',
+    async (query) => {
+      const fetchMock = vi.fn()
+      expect((await handleQuotes(quoteRequest(query), fetchMock)).status).toBe(400)
+      expect(fetchMock).not.toHaveBeenCalled()
+    },
+  )
+
+  it('rejects non-GET and reports upstream failures', async () => {
+    expect((await handleQuotes(quoteRequest('?codes=HSI', 'POST'), vi.fn())).status).toBe(405)
+    const failing = vi.fn().mockRejectedValue(new Error('down'))
+    expect((await handleQuotes(quoteRequest('?codes=HSI'), failing)).status).toBe(502)
   })
 })
