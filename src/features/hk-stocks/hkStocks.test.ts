@@ -49,6 +49,21 @@ describe('summarizeHoldings', () => {
     expect(summary.complete).toBe(true)
   })
 
+  it('groups the same stock held in different accounts into one row', () => {
+    const summary = summarizeHoldings(
+      [
+        position({ name: '長和', symbol: '0001.HK', account: 'hsbc', quantity: 1000 }),
+        position({ name: '長和', symbol: '1', account: 'ibkr', quantity: 500 }),
+        position({ name: '騰訊', symbol: '0700.HK', account: 'hsbc', quantity: 100 }),
+      ],
+      { '00001': quote(68, 67.5), '00700': quote(400, 410) },
+    )
+
+    expect(summary.rows).toHaveLength(2)
+    expect(summary.rows[0]).toMatchObject({ code: '00001', quantity: 1500, valueHkd: 102000, dayGainHkd: 750 })
+    expect(summary.totalHkd).toBe(142000)
+  })
+
   it('falls back to the stored value when a quote is missing', () => {
     const summary = summarizeHoldings(
       [position({ name: '長和', symbol: '0001.HK', quantity: 1000, market_value_hkd: 60000 })],

@@ -66,7 +66,7 @@ function hkdRate(position: AssetPosition): number {
 }
 
 export function summarizeHoldings(positions: AssetPosition[], quotes: Record<string, Quote>): HoldingsSummary {
-  const rows = hkStockPositions(positions).map((position): HoldingRow => {
+  const positionRows = hkStockPositions(positions).map((position): HoldingRow => {
     const code = normalizeHkCode(position.symbol)
     const quote = code ? (quotes[code] ?? null) : null
     const name = position.name ?? position.symbol ?? '—'
@@ -91,6 +91,7 @@ export function summarizeHoldings(positions: AssetPosition[], quotes: Record<str
     }
   })
 
+  const rows = groupBySecurity(positionRows)
   rows.sort((a, b) => b.valueHkd - a.valueHkd)
   const totalHkd = rows.reduce((sum, row) => sum + row.valueHkd, 0)
   const dayGainHkd = rows.reduce((sum, row) => sum + (row.dayGainHkd ?? 0), 0)
@@ -100,8 +101,28 @@ export function summarizeHoldings(positions: AssetPosition[], quotes: Record<str
     totalHkd,
     dayGainHkd,
     dayGainPercent: previousTotal > 0 ? (dayGainHkd / previousTotal) * 100 : null,
-    complete: rows.every((row) => row.dayGainHkd !== null),
+    complete: positionRows.every((row) => row.dayGainHkd !== null),
   }
+}
+
+// The same stock held in several accounts becomes one row with combined quantity, value and gain.
+function groupBySecurity(rows: HoldingRow[]): HoldingRow[] {
+  const groups = new Map<string, HoldingRow>()
+  for (const row of rows) {
+    const existing = groups.get(row.code)
+    if (!existing) {
+      groups.set(row.code, { ...row })
+      continue
+    }
+    existing.quantity = existing.quantity !== null && row.quantity !== null ? existing.quantity + row.quantity : null
+    existing.quote ??= row.quote
+    existing.valueHkd += row.valueHkd
+    existing.dayGainHkd =
+      existing.dayGainHkd === null && row.dayGainHkd === null
+        ? null
+        : (existing.dayGainHkd ?? 0) + (row.dayGainHkd ?? 0)
+  }
+  return [...groups.values()]
 }
 
 export function changeDirection(value: number | null): 'up' | 'down' | 'flat' {
