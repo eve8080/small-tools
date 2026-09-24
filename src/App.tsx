@@ -8,6 +8,7 @@ import QrCodeTool from './features/qr-code/QrCodeTool'
 import HkWeatherTool from './features/hk-weather/HkWeatherTool'
 import AssetsTool from './features/assets/AssetsTool'
 import HkStocksTool from './features/hk-stocks/HkStocksTool'
+import HkMarketTool from './features/hk-market/HkMarketTool'
 import CryptoTool from './features/crypto/CryptoTool'
 import BullionTool from './features/bullion/BullionTool'
 
@@ -32,6 +33,7 @@ export default function App() {
           <Route path="/tools/hk-weather" element={<HkWeatherTool />} />
           <Route path="/tools/assets" element={<AssetsTool />} />
           <Route path="/tools/hk-stocks" element={<HkStocksTool />} />
+          <Route path="/tools/hk-market" element={<HkMarketTool />} />
           <Route path="/tools/crypto" element={<CryptoTool />} />
           <Route path="/tools/bullion" element={<BullionTool />} />
           <Route path="*" element={<NotFoundPage />} />

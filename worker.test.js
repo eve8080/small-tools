@@ -70,8 +70,8 @@ describe('handleApi', () => {
 })
 
 const TENCENT_BODY = [
-  'v_r_hkHSI="100~name~HSI~24761.130~24834.120~24649.450~1~0~0~24761.130~0~0~0~0~0~0~0~0~0~24761.130~0~0~0~0~0~0~0~0~0~0.0~2026/09/24 16:08:39~-72.990~-0.29~24791.200";',
-  'v_r_hk00001="100~name~00001~68.100~67.600~67.750~1~0~0~68.100~0~0~0~0~0~0~0~0~0~68.100~0~0~0~0~0~0~0~0~0~1.0~2026/09/24 16:08:39~0.500~0.74~68.200";',
+  'v_r_hkHSI="100~name~HSI~24761.130~24834.120~24649.450~1~0~0~24761.130~0~0~0~0~0~0~0~0~0~24761.130~0~0~0~0~0~0~0~0~0~0.0~2026/09/24 16:08:39~-72.990~-0.29~24791.200~24648.290~24761.130~1~15955182.001";',
+  'v_r_hk00001="100~name~00001~68.100~67.600~67.750~1~0~0~68.100~0~0~0~0~0~0~0~0~0~68.100~0~0~0~0~0~0~0~0~0~1.0~2026/09/24 16:08:39~0.500~0.74~68.200~67.250~68.100~1~261796070.950";',
   'v_pv_none_match="1";',
 ].join('\n')
 
@@ -87,13 +87,19 @@ describe('handleQuotes', () => {
     expect(fetchMock).toHaveBeenCalledWith('https://qt.gtimg.cn/q=r_hkHSI,r_hk00001')
     expect(await response.json()).toEqual({
       quotes: {
-        HSI: { price: 24761.13, previousClose: 24834.12, change: -72.99, changePercent: -0.29, time: '2026/09/24 16:08:39' },
-        '00001': { price: 68.1, previousClose: 67.6, change: 0.5, changePercent: 0.74, time: '2026/09/24 16:08:39' },
+        HSI: { price: 24761.13, previousClose: 24834.12, change: -72.99, changePercent: -0.29, high: 24791.2, low: 24648.29, turnover: 15955182.001, time: '2026/09/24 16:08:39' },
+        '00001': { price: 68.1, previousClose: 67.6, change: 0.5, changePercent: 0.74, high: 68.2, low: 67.25, turnover: 261796070.95, time: '2026/09/24 16:08:39' },
       },
     })
   })
 
-  it.each(['', '?codes=', '?codes=HSI,1', '?codes=HSI,00001;x', `?codes=${Array.from({ length: 61 }, (_, i) => String(i).padStart(5, '0')).join(',')}`])(
+  it('accepts the other Hang Seng indices', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('', { status: 200 }))
+    expect((await handleQuotes(quoteRequest('?codes=HSCEI,HSTECH,HSCCI'), fetchMock)).status).toBe(200)
+    expect(fetchMock).toHaveBeenCalledWith('https://qt.gtimg.cn/q=r_hkHSCEI,r_hkHSTECH,r_hkHSCCI')
+  })
+
+  it.each(['', '?codes=', '?codes=HSI,1', '?codes=HSI,00001;x', '?codes=DJI', `?codes=${Array.from({ length: 101 }, (_, i) => String(i).padStart(5, '0')).join(',')}`])(
     'rejects invalid codes %s without calling upstream',
     async (query) => {
       const fetchMock = vi.fn()

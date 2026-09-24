@@ -7,7 +7,7 @@
 //   ASSETS_PASSWORD            clients must send `Authorization: Bearer <password>`
 //
 // It also exposes /api/hk-quotes?codes=HSI,00001,... — public Hong Kong market quotes
-// (Hang Seng Index and HK stocks) from Tencent's quote feed, which browsers can't call directly.
+// (Hang Seng family indices and HK stocks) from Tencent's quote feed, which browsers can't call directly.
 //
 // /api/metals — spot gold, silver, platinum and palladium plus USD/HKD, from the same feed.
 //
@@ -88,8 +88,8 @@ export async function handleApi(request, env, fetchFn = fetch) {
   return json(await upstream.json())
 }
 
-const QUOTE_CODE = /^(HSI|\d{5})$/
-const MAX_QUOTE_CODES = 60
+const QUOTE_CODE = /^(HSI|HSCEI|HSTECH|HSCCI|\d{5})$/
+const MAX_QUOTE_CODES = 100
 const QUOTE_UPSTREAM = 'https://qt.gtimg.cn/q='
 
 function toNumber(value) {
@@ -111,6 +111,9 @@ export function parseTencentQuotes(text) {
       previousClose,
       change: toNumber(fields[31]) ?? price - previousClose,
       changePercent: toNumber(fields[32]),
+      high: toNumber(fields[33]),
+      low: toNumber(fields[34]),
+      turnover: toNumber(fields[37]),
       time: fields[30] || null,
     }
   }

@@ -8,6 +8,10 @@ export interface Quote {
   previousClose: number
   change: number
   changePercent: number | null
+  high?: number | null
+  low?: number | null
+  /** Turnover in HKD. */
+  turnover?: number | null
   time: string | null
 }
 

@@ -50,6 +50,13 @@ export const tools: ToolDefinition[] = [
     icon: '📈',
   },
   {
+    id: 'hk-market',
+    path: '/tools/hk-market',
+    name: '港股市況',
+    shortDescription: '今日港股主要指數、升跌分佈、板塊表現及藍籌熱圖',
+    icon: '🗺️',
+  },
+  {
     id: 'crypto',
     path: '/tools/crypto',
     name: '加密貨幣',
