@@ -9,6 +9,7 @@ import HkWeatherTool from './features/hk-weather/HkWeatherTool'
 import AssetsTool from './features/assets/AssetsTool'
 import HkStocksTool from './features/hk-stocks/HkStocksTool'
 import CryptoTool from './features/crypto/CryptoTool'
+import BullionTool from './features/bullion/BullionTool'
 
 function NotFoundPage() {
   return (
@@ -32,6 +33,7 @@ export default function App() {
           <Route path="/tools/assets" element={<AssetsTool />} />
           <Route path="/tools/hk-stocks" element={<HkStocksTool />} />
           <Route path="/tools/crypto" element={<CryptoTool />} />
+          <Route path="/tools/bullion" element={<BullionTool />} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Routes>

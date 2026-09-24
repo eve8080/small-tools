@@ -5,12 +5,14 @@ import HkWeatherCardPreview from '../features/hk-weather/HkWeatherCardPreview'
 import AssetsCardPreview from '../features/assets/AssetsCardPreview'
 import HkStocksCardPreview from '../features/hk-stocks/HkStocksCardPreview'
 import CryptoCardPreview from '../features/crypto/CryptoCardPreview'
+import BullionCardPreview from '../features/bullion/BullionCardPreview'
 
 const cardPreviews: Record<string, ComponentType> = {
   'hk-weather': HkWeatherCardPreview,
   assets: AssetsCardPreview,
   'hk-stocks': HkStocksCardPreview,
   crypto: CryptoCardPreview,
+  bullion: BullionCardPreview,
 }
 
 export default function HomePage() {

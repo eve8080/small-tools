@@ -9,6 +9,8 @@
 // It also exposes /api/hk-quotes?codes=HSI,00001,... — public Hong Kong market quotes
 // (Hang Seng Index and HK stocks) from Tencent's quote feed, which browsers can't call directly.
 //
+// /api/metals — spot gold, silver, platinum and palladium plus USD/HKD, from the same feed.
+//
 // And /api/crypto?symbols=btc,eth — crypto market data (top 10 coins, the held coins, global
 // totals) in HKD, cached at the edge for a minute. It comes from CoinPaprika's free API, which
 // needs no key; CoinGecko's keyless API rate-limits Cloudflare's shared IPs (HTTP 429).
@@ -280,11 +282,57 @@ export async function handleCrypto(request, env, fetchFn = fetch, cache = global
   return json(body)
 }
 
+// Spot precious metals (USD per troy ounce) and USD/HKD, from the same Tencent quote feed.
+// Lines look like: v_hf_XAU="price,change%,bid,ask,high,low,time,previousClose,...,date,name";
+const METAL_CODES = ['XAU', 'XAG', 'XPT', 'XPD']
+
+export function parseTencentMetals(text) {
+  const metals = {}
+  for (const match of text.matchAll(/v_hf_(XAU|XAG|XPT|XPD)="([^"]*)"/g)) {
+    const fields = match[2].split(',')
+    const price = toNumber(fields[0])
+    const previousClose = toNumber(fields[7])
+    if (price === null || previousClose === null) continue
+    metals[match[1]] = {
+      priceUsd: price,
+      previousCloseUsd: previousClose,
+      changePercent: toNumber(fields[1]),
+      time: fields[12] && fields[6] ? `${fields[12]} ${fields[6]}` : null,
+    }
+  }
+  const fx = text.match(/v_whUSDHKD="([^"]*)"/)
+  const usdHkd = fx ? toNumber(fx[1].split('~')[3]) : null
+  return { metals, usdHkd }
+}
+
+export async function handleMetals(request, fetchFn = fetch) {
+  if (request.method !== 'GET') {
+    return json({ error: 'Method not allowed' }, 405)
+  }
+  let upstream
+  try {
+    upstream = await fetchFn(QUOTE_UPSTREAM + [...METAL_CODES.map((code) => `hf_${code}`), 'whUSDHKD'].join(','))
+  } catch {
+    return json({ error: 'Upstream unavailable' }, 502)
+  }
+  if (!upstream.ok) {
+    return json({ error: 'Upstream error' }, 502)
+  }
+  const body = parseTencentMetals(await upstream.text())
+  if (Object.keys(body.metals).length === 0 || body.usdHkd === null) {
+    return json({ error: 'Upstream error' }, 502)
+  }
+  return json(body)
+}
+
 export default {
   async fetch(request, env) {
     const { pathname } = new URL(request.url)
     if (pathname === '/api/hk-quotes') {
       return handleQuotes(request)
+    }
+    if (pathname === '/api/metals') {
+      return handleMetals(request)
     }
     if (pathname === '/api/crypto') {
       return handleCrypto(request, env)

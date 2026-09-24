@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from 'vitest'
-import { handleApi, handleCrypto, handleQuotes } from './worker.js'
+import { handleApi, handleCrypto, handleMetals, handleQuotes } from './worker.js'
 
 const env = {
   SUPABASE_URL: 'https://example.supabase.co/',
@@ -219,5 +219,33 @@ describe('handleCrypto', () => {
 
   it('rejects non-GET', async () => {
     expect((await handleCrypto(cryptoRequest('', 'POST'), {}, vi.fn(), memoryCache())).status).toBe(405)
+  })
+})
+
+const TENCENT_METALS = [
+  'v_hf_XAU="4254.12,-0.77,4254.12,4254.47,4303.09,4244.26,22:58:00,4287.28,4290.90,0,0,0,2026-09-24,name";',
+  'v_hf_XAG="63.24,-1.83,63.24,63.28,64.53,63.20,22:58:00,64.42,64.39,0,0,0,2026-09-24,name";',
+  'v_whUSDHKD="310~name~USDHKD~7.8426~0~20260924225921~7.8430";',
+].join('\n')
+
+describe('handleMetals', () => {
+  it('parses spot metals and the USD/HKD rate', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(TENCENT_METALS, { status: 200 }))
+    const response = await handleMetals(new Request('https://small-tools.test/api/metals'), fetchMock)
+    expect(fetchMock).toHaveBeenCalledWith('https://qt.gtimg.cn/q=hf_XAU,hf_XAG,hf_XPT,hf_XPD,whUSDHKD')
+    expect(await response.json()).toEqual({
+      metals: {
+        XAU: { priceUsd: 4254.12, previousCloseUsd: 4287.28, changePercent: -0.77, time: '2026-09-24 22:58:00' },
+        XAG: { priceUsd: 63.24, previousCloseUsd: 64.42, changePercent: -1.83, time: '2026-09-24 22:58:00' },
+      },
+      usdHkd: 7.8426,
+    })
+  })
+
+  it('fails when the feed is down or returns nothing usable', async () => {
+    const request = new Request('https://small-tools.test/api/metals')
+    expect((await handleMetals(request, vi.fn().mockRejectedValue(new Error('x')))).status).toBe(502)
+    expect((await handleMetals(request, vi.fn().mockResolvedValue(new Response('v_pv_none_match="1";')))).status).toBe(502)
+    expect((await handleMetals(new Request(request, { method: 'POST' }), vi.fn())).status).toBe(405)
   })
 })

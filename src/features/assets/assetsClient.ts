@@ -4,6 +4,7 @@ export interface AssetPosition {
   asset_class: string | null
   account: string | null
   quantity: number | null
+  quantity_unit?: string | null
   current_price: number | null
   currency_code: string | null
   market_value_hkd: number | null

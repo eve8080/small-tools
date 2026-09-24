@@ -56,6 +56,13 @@ export const tools: ToolDefinition[] = [
     shortDescription: '加密貨幣持倉市值、24 小時盈虧及市場數據',
     icon: '🪙',
   },
+  {
+    id: 'bullion',
+    path: '/tools/bullion',
+    name: '貴金屬',
+    shortDescription: '金銀等貴金屬持倉市值、今日盈虧及現貨價格',
+    icon: '🥇',
+  },
 ]
 
 export function findToolByPath(path: string): ToolDefinition | undefined {
