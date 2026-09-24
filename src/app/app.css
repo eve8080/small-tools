@@ -136,6 +136,19 @@
   font-weight: 600;
 }
 
+.assets-card-preview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.assets-card-total {
+  font-size: 1.6rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-accent);
+}
+
 /* Tool pages */
 
 .tool-page-header {
@@ -446,6 +459,93 @@
   justify-content: space-between;
   gap: var(--space-3);
   flex-wrap: wrap;
+}
+
+/* Assets */
+
+.panel.assets {
+  max-width: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.assets-summary {
+  text-align: center;
+}
+
+.assets-total {
+  font-size: clamp(2rem, 8vw, 3rem);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-accent);
+}
+
+.assets-table-wrap {
+  overflow-x: auto;
+}
+
+.assets-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.assets-table th,
+.assets-table td {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.assets-table th {
+  color: var(--color-text-muted);
+  font-weight: 600;
+  font-size: 0.8rem;
+}
+
+.assets-table [data-numeric='true'] {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 700px) {
+  .assets-table thead {
+    display: none;
+  }
+
+  .assets-table,
+  .assets-table tbody,
+  .assets-table tr,
+  .assets-table td {
+    display: block;
+  }
+
+  .assets-table tr {
+    padding: var(--space-3);
+    margin-bottom: var(--space-3);
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+  }
+
+  .assets-table td,
+  .assets-table td[data-numeric='true'] {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: var(--space-1) 0;
+    border-bottom: none;
+    text-align: right;
+    white-space: normal;
+  }
+
+  .assets-table td::before {
+    content: attr(data-label);
+    color: var(--color-text-muted);
+    text-align: left;
+  }
 }
 
 @media (max-width: 640px) {

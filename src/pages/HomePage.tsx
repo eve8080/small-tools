@@ -2,9 +2,11 @@ import type { ComponentType } from 'react'
 import ToolCard from '../components/ToolCard'
 import { tools } from '../app/tools'
 import HkWeatherCardPreview from '../features/hk-weather/HkWeatherCardPreview'
+import AssetsCardPreview from '../features/assets/AssetsCardPreview'
 
 const cardPreviews: Record<string, ComponentType> = {
   'hk-weather': HkWeatherCardPreview,
+  assets: AssetsCardPreview,
 }
 
 export default function HomePage() {

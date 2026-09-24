@@ -35,6 +35,13 @@ export const tools: ToolDefinition[] = [
     shortDescription: '顯示香港時間及天文台最新天氣',
     icon: '🌤️',
   },
+  {
+    id: 'assets',
+    path: '/tools/assets',
+    name: '資產總覽',
+    shortDescription: '讀取並顯示 Supabase 的持倉數據',
+    icon: '📊',
+  },
 ]
 
 export function findToolByPath(path: string): ToolDefinition | undefined {

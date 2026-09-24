@@ -13,7 +13,7 @@ export default defineConfig({
         id: '/',
         name: 'Small Tools',
         short_name: 'Small Tools',
-        description: '一站式小工具儀表板：短網址、番茄鐘、QR Code 產生器、香港時鐘與天氣。',
+        description: '一站式小工具儀表板：短網址、番茄鐘、QR Code 產生器、香港時鐘與天氣、資產總覽。',
         lang: 'zh-HK',
         start_url: '/',
         scope: '/',
@@ -42,7 +42,12 @@ export default defineConfig({
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
         navigateFallback: '/index.html',
+        navigateFallbackDenylist: [/^\/api\//],
         runtimeCaching: [
+          {
+            urlPattern: ({ url }) => url.pathname.startsWith('/api/'),
+            handler: 'NetworkOnly',
+          },
           {
             urlPattern: /^https:\/\/is\.gd\/create\.php/,
             handler: 'NetworkOnly',
