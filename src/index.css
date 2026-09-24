@@ -76,8 +76,15 @@ body {
   padding: 0;
 }
 
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
 body {
   min-height: 100svh;
+  overscroll-behavior-y: none;
   background: var(--color-bg);
   color: var(--color-text);
 }
@@ -107,6 +114,7 @@ a {
 
 button {
   font-family: inherit;
+  touch-action: manipulation;
 }
 
 :focus-visible {

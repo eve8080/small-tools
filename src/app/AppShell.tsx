@@ -1,4 +1,5 @@
 import { Link, Outlet } from 'react-router-dom'
+import FullscreenButton from '../components/FullscreenButton'
 
 export default function AppShell() {
   return (
@@ -13,6 +14,7 @@ export default function AppShell() {
           </span>
           <span>Small Tools 工具箱</span>
         </Link>
+        <FullscreenButton />
       </header>
       <main id="main-content" className="shell-main">
         <Outlet />

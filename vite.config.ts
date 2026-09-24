@@ -18,6 +18,8 @@ export default defineConfig({
         start_url: '/',
         scope: '/',
         display: 'standalone',
+        display_override: ['fullscreen', 'standalone'],
+        orientation: 'any',
         background_color: '#F5EFE6',
         theme_color: '#8B5E3C',
         icons: [

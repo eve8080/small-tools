@@ -11,6 +11,8 @@
   z-index: 10;
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
   padding: var(--space-3) max(var(--space-5), env(safe-area-inset-left)) var(--space-3)
     max(var(--space-5), env(safe-area-inset-right));
   padding-top: max(var(--space-3), env(safe-area-inset-top));
@@ -157,6 +159,7 @@
 
 .back-link {
   display: inline-flex;
+  min-height: 44px;
   align-items: center;
   gap: var(--space-1);
   text-decoration: none;
@@ -205,6 +208,7 @@
 .field-input {
   font-size: 1rem;
   padding: var(--space-3);
+  min-height: 44px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--color-border);
   background: var(--color-bg);
@@ -229,6 +233,7 @@
   font-weight: 600;
   padding: var(--space-3) var(--space-5);
   border-radius: var(--radius-sm);
+  min-height: 44px;
   border: 1px solid transparent;
   cursor: pointer;
   transition:
@@ -338,6 +343,7 @@
   border-radius: var(--radius-sm);
   font-size: 0.85rem;
   font-weight: 600;
+  min-height: 40px;
   color: var(--color-text-muted);
 }
 
@@ -555,5 +561,114 @@
 
   .panel {
     padding: var(--space-4);
+  }
+}
+
+.fullscreen-btn {
+  padding: var(--space-2) var(--space-4);
+  font-size: 0.9rem;
+}
+
+/* Touch devices: no sticky hover lift after a tap */
+@media (hover: none) {
+  .tool-card:hover {
+    background: var(--color-surface);
+    box-shadow: var(--shadow-card);
+    transform: none;
+  }
+
+  .tool-card:active {
+    background: var(--color-surface-hover);
+    transform: scale(0.98);
+  }
+}
+
+/* Tablets (iPad portrait and landscape) */
+@media (min-width: 768px) {
+  .shell-main {
+    max-width: 1180px;
+    padding-top: var(--space-7);
+  }
+
+  .hero h1 {
+    font-size: 2.25rem;
+  }
+
+  .hero p {
+    font-size: 1.1rem;
+  }
+
+  .tool-grid {
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: var(--space-5);
+  }
+
+  .tool-card {
+    padding: var(--space-6);
+    min-height: 180px;
+  }
+
+  .tool-card-icon {
+    font-size: 2.25rem;
+  }
+
+  .tool-card-name {
+    font-size: 1.2rem;
+  }
+
+  .tool-page-header {
+    max-width: 720px;
+    margin-inline: auto;
+  }
+
+  .tool-page-header:has(+ .panel.assets) {
+    max-width: none;
+  }
+
+  .tool-page-header h1 {
+    font-size: 1.75rem;
+  }
+
+  .panel {
+    max-width: 720px;
+    margin-inline: auto;
+    padding: var(--space-6);
+  }
+
+  .pomodoro-time {
+    font-size: 7rem;
+  }
+
+  .pomodoro-mode-tab {
+    padding: var(--space-3) var(--space-5);
+    font-size: 1rem;
+  }
+
+  .qr-preview {
+    width: 320px;
+    height: 320px;
+  }
+
+  .hk-clock-time {
+    font-size: 6rem;
+  }
+
+  .hk-weather-icon {
+    font-size: 3.5rem;
+  }
+
+  .hk-weather-temp {
+    font-size: 2.75rem;
+  }
+}
+
+/* Installed to the home screen: no footer, use the whole screen */
+@media (display-mode: standalone), (display-mode: fullscreen) {
+  .shell-footer {
+    display: none;
+  }
+
+  .shell-main {
+    padding-bottom: max(var(--space-7), env(safe-area-inset-bottom));
   }
 }
