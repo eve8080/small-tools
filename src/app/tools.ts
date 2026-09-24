@@ -57,6 +57,13 @@ export const tools: ToolDefinition[] = [
     icon: '🗺️',
   },
   {
+    id: 'hk-heatmap',
+    path: '/tools/hk-heatmap',
+    name: '港股熱圖',
+    shortDescription: '今日港股藍籌熱圖：面積按市值，顏色按升跌',
+    icon: '🟩',
+  },
+  {
     id: 'crypto',
     path: '/tools/crypto',
     name: '加密貨幣',

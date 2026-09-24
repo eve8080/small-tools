@@ -83,14 +83,15 @@ export function rangePosition(value: number, low: number | null | undefined, hig
 }
 
 /** Background for a heat-map tile: green up, red down (HK convention), stronger for bigger moves. */
-export function heatColor(changePercent: number): string {
-  const strength = Math.round(Math.min(Math.abs(changePercent) / 3, 1) * 70) + 10
+export function heatColor(changePercent: number, maxStrength = 80): string {
+  const strength = Math.round(Math.min(Math.abs(changePercent) / 3, 1) * (maxStrength - 10)) + 10
   if (changePercent === 0) return 'var(--color-surface)'
   const color = changePercent > 0 ? 'var(--color-success)' : 'var(--color-error)'
   return `color-mix(in srgb, ${color} ${strength}%, var(--color-surface))`
 }
 
 export function formatTurnover(value: number): string {
+  if (value >= 1e12) return `HK$${(value / 1e12).toFixed(2)}萬億`
   if (value >= 1e8) return `HK$${(value / 1e8).toFixed(value >= 1e10 ? 0 : 1)}億`
   if (value >= 1e4) return `HK$${(value / 1e4).toFixed(0)}萬`
   return `HK$${value.toFixed(0)}`

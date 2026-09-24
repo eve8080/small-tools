@@ -114,6 +114,8 @@ export function parseTencentQuotes(text) {
       high: toNumber(fields[33]),
       low: toNumber(fields[34]),
       turnover: toNumber(fields[37]),
+      // Field 44 is the HK-listed market value in units of HK$100 million (億).
+      marketCap: toNumber(fields[44]) === null ? null : toNumber(fields[44]) * 1e8,
       time: fields[30] || null,
     }
   }

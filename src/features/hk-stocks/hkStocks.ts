@@ -12,6 +12,8 @@ export interface Quote {
   low?: number | null
   /** Turnover in HKD. */
   turnover?: number | null
+  /** HK-listed market value in HKD. */
+  marketCap?: number | null
   time: string | null
 }
 

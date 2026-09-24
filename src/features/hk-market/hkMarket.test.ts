@@ -61,4 +61,5 @@ it('formats turnover in 億 and 萬', () => {
   expect(formatTurnover(6_237_711_469)).toBe('HK$62.4億')
   expect(formatTurnover(15_000_000_000)).toBe('HK$150億')
   expect(formatTurnover(56_000)).toBe('HK$6萬')
+  expect(formatTurnover(3_987_306_350_000)).toBe('HK$3.99萬億')
 })

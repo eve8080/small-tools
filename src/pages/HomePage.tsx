@@ -5,6 +5,7 @@ import HkWeatherCardPreview from '../features/hk-weather/HkWeatherCardPreview'
 import AssetsCardPreview from '../features/assets/AssetsCardPreview'
 import HkStocksCardPreview from '../features/hk-stocks/HkStocksCardPreview'
 import HkMarketCardPreview from '../features/hk-market/HkMarketCardPreview'
+import HkHeatmapCardPreview from '../features/hk-heatmap/HkHeatmapCardPreview'
 import CryptoCardPreview from '../features/crypto/CryptoCardPreview'
 import BullionCardPreview from '../features/bullion/BullionCardPreview'
 
@@ -13,6 +14,7 @@ const cardPreviews: Record<string, ComponentType> = {
   assets: AssetsCardPreview,
   'hk-stocks': HkStocksCardPreview,
   'hk-market': HkMarketCardPreview,
+  'hk-heatmap': HkHeatmapCardPreview,
   crypto: CryptoCardPreview,
   bullion: BullionCardPreview,
 }
