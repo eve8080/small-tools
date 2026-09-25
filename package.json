@@ -13,7 +13,8 @@
     "preview": "vite preview",
     "cloudflare:dev": "npm run build && wrangler dev",
     "deploy:dry-run": "npm run build && wrangler deploy --dry-run",
-    "deploy": "npm run build && wrangler deploy"
+    "deploy": "npm run build && wrangler deploy",
+    "deploy:aws": "npm run build && bash deploy-aws.sh"
   },
   "dependencies": {
     "qrcode": "^1.5.4",
