@@ -26,6 +26,8 @@ export interface CryptoMarketData {
   top: CoinMarket[]
   held: Record<string, CoinMarket>
   global: GlobalMarket | null
+  /** HKD per USD, for showing prices in USD; null when the upstream didn't provide it. */
+  usdHkd: number | null
 }
 
 export type CryptoMarketResult = { ok: true; data: CryptoMarketData } | { ok: false; error: string }
@@ -99,6 +101,7 @@ export async function fetchCryptoMarket(
       top?: Record<string, unknown>[]
       held?: Record<string, unknown>[]
       global?: Record<string, unknown> | null
+      usd_hkd?: unknown
     }
 
     const top = (body.top ?? []).map(parseCoin).filter((coin) => coin !== null)
@@ -117,7 +120,8 @@ export async function fetchCryptoMarket(
         }
       : null
 
-    return { ok: true, data: { top, held, global } }
+    const usdHkd = toNumber(body.usd_hkd)
+    return { ok: true, data: { top, held, global, usdHkd: usdHkd && usdHkd > 0 ? usdHkd : null } }
   } catch {
     return { ok: false, error: MARKET_ERROR }
   }

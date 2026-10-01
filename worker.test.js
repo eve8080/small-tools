@@ -132,14 +132,14 @@ const PAPRIKA_TICKERS = [
   { id: 'fake-btc', symbol: 'BTC', name: 'Fake', rank: 0, quotes: { USD: { price: 1 }, HKD: { price: 7.8 } } },
 ]
 
-function paprikaFetch() {
+function paprikaFetch(tickers = PAPRIKA_TICKERS) {
   return vi.fn((url) =>
     Promise.resolve(
       new Response(
         JSON.stringify(
           url.endsWith('/global')
             ? { market_cap_usd: 3e12, market_cap_change_24h: -0.8, bitcoin_dominance_percentage: 56.3 }
-            : PAPRIKA_TICKERS,
+            : tickers,
         ),
         { status: 200 },
       ),
@@ -147,10 +147,19 @@ function paprikaFetch() {
   )
 }
 
-function coingeckoFetch() {
+function coingeckoFetch(rates = { usd: { value: 84000 }, hkd: { value: 655200 } }) {
   return vi.fn((url) =>
     Promise.resolve(
-      new Response(JSON.stringify(url.endsWith('/global') ? { data: { btc: 1 } } : [{ symbol: 'btc' }]), { status: 200 }),
+      new Response(
+        JSON.stringify(
+          url.endsWith('/global')
+            ? { data: { btc: 1 } }
+            : url.endsWith('/exchange_rates')
+              ? { rates }
+              : [{ symbol: 'btc' }],
+        ),
+        { status: 200 },
+      ),
     ),
   )
 }
@@ -176,6 +185,7 @@ describe('handleCrypto', () => {
       image: 'https://static.coinpaprika.com/coin/eth-ethereum/logo.png',
     })
     expect(body.held[1].price_change_24h).toBeCloseTo(780)
+    expect(body.usd_hkd).toBeCloseTo(7.8)
     expect(body.global).toEqual({
       total_market_cap: { hkd: 3e12 * 7.8 },
       market_cap_change_percentage_24h_usd: -0.8,
@@ -192,11 +202,58 @@ describe('handleCrypto', () => {
     const body = await (
       await handleCrypto(cryptoRequest('?symbols=btc'), { COINGECKO_API_KEY: 'demo' }, fetchMock, memoryCache())
     ).json()
-    expect(body).toEqual({ top: [{ symbol: 'btc' }], held: [{ symbol: 'btc' }], global: { btc: 1 } })
+    expect(body).toEqual({ top: [{ symbol: 'btc' }], held: [{ symbol: 'btc' }], global: { btc: 1 }, usd_hkd: 7.8 })
     expect(fetchMock.mock.calls.map(([url]) => url)).toContain(
       'https://api.coingecko.com/api/v3/coins/markets?vs_currency=hkd&symbols=btc&include_tokens=top',
     )
     expect(fetchMock.mock.calls[0][1].headers).toMatchObject({ 'x-cg-demo-api-key': 'demo', 'User-Agent': 'small-tools/1.0' })
+  })
+
+  it('still answers when CoinGecko exchange rates are unavailable', async () => {
+    const base = coingeckoFetch()
+    const fetchMock = vi.fn((url, init) =>
+      url.endsWith('/exchange_rates') ? Promise.resolve(new Response('', { status: 500 })) : base(url, init),
+    )
+    const response = await handleCrypto(cryptoRequest('?symbols=btc'), { COINGECKO_API_KEY: 'demo' }, fetchMock, memoryCache())
+    expect(response.status).toBe(200)
+    expect((await response.json()).usd_hkd).toBeNull()
+  })
+
+  it.each([
+    ['a missing USD quote', { HKD: { price: 655200, percent_change_24h: -0.5, market_cap: 13e12 } }],
+    ['a zero USD price', { USD: { price: 0 }, HKD: { price: 655200, percent_change_24h: -0.5, market_cap: 13e12 } }],
+    ['a zero HKD price', { USD: { price: 84000 }, HKD: { price: 0, percent_change_24h: -0.5, market_cap: 13e12 } }],
+    ['a negative USD price', { USD: { price: -84000 }, HKD: { price: 655200, percent_change_24h: -0.5, market_cap: 13e12 } }],
+    ['a non-numeric USD price', { USD: { price: '84000' }, HKD: { price: 655200, percent_change_24h: -0.5, market_cap: 13e12 } }],
+  ])('keeps CoinPaprika market data with usd_hkd null for %s', async (_, btcQuotes) => {
+    const tickers = PAPRIKA_TICKERS.map((ticker) => (ticker.id === 'btc-bitcoin' ? { ...ticker, quotes: btcQuotes } : ticker))
+    const response = await handleCrypto(cryptoRequest('?symbols=eth'), {}, paprikaFetch(tickers), memoryCache())
+    expect(response.status).toBe(200)
+    const body = await response.json()
+    expect(body.usd_hkd).toBeNull()
+    expect(body.top.map((coin) => coin.symbol)).toEqual(['btc', 'eth'])
+    expect(body.held).toEqual([expect.objectContaining({ id: 'eth-ethereum', current_price: 20280 })])
+    expect(body.global).toEqual({
+      total_market_cap: { hkd: null },
+      market_cap_change_percentage_24h_usd: -0.8,
+      market_cap_percentage: { btc: 56.3 },
+    })
+  })
+
+  it.each([
+    ['a zero USD rate', { usd: { value: 0 }, hkd: { value: 655200 } }],
+    ['a negative HKD rate', { usd: { value: 84000 }, hkd: { value: -655200 } }],
+    ['a non-numeric USD rate', { usd: { value: '84000' }, hkd: { value: 655200 } }],
+    ['missing rates', null],
+  ])('keeps CoinGecko market data with usd_hkd null for %s', async (_, rates) => {
+    const response = await handleCrypto(
+      cryptoRequest('?symbols=btc'),
+      { COINGECKO_API_KEY: 'demo' },
+      coingeckoFetch(rates),
+      memoryCache(),
+    )
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ top: [{ symbol: 'btc' }], held: [{ symbol: 'btc' }], global: { btc: 1 }, usd_hkd: null })
   })
 
   it('serves stale data when the upstream fails, and 502 when there is none', async () => {
