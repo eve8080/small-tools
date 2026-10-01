@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from 'vitest'
-import { handleApi, handleCrypto, handleMetals, handleQuotes } from './worker.js'
+import worker, { handleApi, handleCrypto, handleMetals, handleQuotes } from './worker.js'
 
 const env = {
   SUPABASE_URL: 'https://example.supabase.co/',
@@ -282,6 +282,272 @@ describe('handleCrypto', () => {
 
   it('rejects non-GET', async () => {
     expect((await handleCrypto(cryptoRequest('', 'POST'), {}, vi.fn(), memoryCache())).status).toBe(405)
+  })
+})
+
+const AWS_CRYPTO = 'https://d22qpfwiw6tc.cloudfront.net/api/crypto'
+const AWS_BODY = {
+  top: [{ id: 'btc-bitcoin', symbol: 'btc', current_price: 655200 }],
+  held: [{ id: 'eth-ethereum', symbol: 'eth', current_price: 20280 }],
+  global: {
+    total_market_cap: { hkd: 23.4e12 },
+    market_cap_change_percentage_24h_usd: -0.8,
+    market_cap_percentage: { btc: 56.3 },
+  },
+  usd_hkd: 7.8,
+}
+const cloudflareEnv = { ASSETS: { fetch: vi.fn() } }
+// Lambda gets process.env: the Worker secrets but no ASSETS binding.
+const lambdaEnv = { SUPABASE_URL: 'https://example.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'service-key', ASSETS_PASSWORD: 'pw' }
+
+function jsonResponse(body, status = 200) {
+  return Promise.resolve(new Response(JSON.stringify(body), { status }))
+}
+
+// CoinPaprika and CoinGecko refuse Cloudflare with 402; the AWS deployment answers with `fallback()`.
+function blockedFetch(fallback = () => jsonResponse(AWS_BODY)) {
+  return vi.fn((url) => (url.startsWith(AWS_CRYPTO) ? fallback() : Promise.resolve(new Response('', { status: 402 }))))
+}
+
+function fallbackCalls(fetchMock) {
+  return fetchMock.mock.calls.filter(([url]) => url.startsWith(AWS_CRYPTO))
+}
+
+// Seed the cache from CoinPaprika, then age the entry past the fresh window.
+async function staleCache(query) {
+  const cache = memoryCache()
+  await handleCrypto(cryptoRequest(query), {}, paprikaFetch(), cache)
+  const [key, stored] = [...cache.store.entries()][0]
+  const headers = new Headers(stored.headers)
+  headers.set('X-Fetched-At', String(Date.now() - 5 * 60 * 1000))
+  cache.store.set(key, new Response(await stored.text(), { headers }))
+  return cache
+}
+
+describe('handleCrypto AWS fallback', () => {
+  it.each([
+    ['CoinPaprika', {}],
+    ['CoinGecko', { COINGECKO_API_KEY: 'demo' }],
+  ])('on Cloudflare, falls back to the AWS deployment when %s fails, and caches it', async (_, env) => {
+    const fetchMock = blockedFetch(() => jsonResponse({ ...AWS_BODY, extra: 'dropped' }))
+    const cache = memoryCache()
+
+    const response = await handleCrypto(cryptoRequest('?symbols=ETH, btc,eth'), { ...cloudflareEnv, ...env }, fetchMock, cache)
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual(AWS_BODY)
+    expect(fallbackCalls(fetchMock)).toEqual([
+      [
+        `${AWS_CRYPTO}?symbols=btc,eth`,
+        { headers: { Accept: 'application/json', 'User-Agent': 'small-tools/1.0' }, signal: expect.any(AbortSignal) },
+      ],
+    ])
+    expect(fetchMock.mock.calls.length).toBeGreaterThan(1)
+
+    const stored = cache.store.get('https://small-tools.cache/crypto?symbols=btc,eth')
+    expect(stored.headers.get('Cache-Control')).toBe('max-age=3600')
+    expect(Date.now() - Number(stored.headers.get('X-Fetched-At'))).toBeLessThan(1000)
+    expect(await stored.clone().json()).toEqual(AWS_BODY)
+
+    const calls = fetchMock.mock.calls.length
+    const cached = await handleCrypto(cryptoRequest('?symbols=btc,eth'), { ...cloudflareEnv, ...env }, fetchMock, cache)
+    expect(await cached.json()).toEqual(AWS_BODY)
+    expect(fetchMock).toHaveBeenCalledTimes(calls)
+  })
+
+  it('asks the fallback for an empty symbol list as-is', async () => {
+    const fetchMock = blockedFetch()
+    expect((await handleCrypto(cryptoRequest('?symbols='), cloudflareEnv, fetchMock, memoryCache())).status).toBe(200)
+    expect(fallbackCalls(fetchMock).map(([url]) => url)).toEqual([`${AWS_CRYPTO}?symbols=`])
+  })
+
+  it.each([
+    ['an HTTP error', () => jsonResponse(AWS_BODY, 502)],
+    ['a network error', () => Promise.reject(new Error('down'))],
+    ['a non-JSON body', () => Promise.resolve(new Response('<html>', { status: 200 }))],
+    ['an error body', () => jsonResponse({ error: 'Upstream unavailable' })],
+    ['a non-array top', () => jsonResponse({ ...AWS_BODY, top: {} })],
+    ['a non-object coin', () => jsonResponse({ ...AWS_BODY, held: ['btc'] })],
+    ['a missing global', () => jsonResponse({ top: [], held: [], usd_hkd: null })],
+    ['a zero usd_hkd', () => jsonResponse({ ...AWS_BODY, usd_hkd: 0 })],
+    ['a string usd_hkd', () => jsonResponse({ ...AWS_BODY, usd_hkd: '7.8' })],
+    ['an empty coin', () => jsonResponse({ ...AWS_BODY, top: [{}] })],
+    ['a coin without an id', () => jsonResponse({ ...AWS_BODY, held: [{ symbol: 'eth', current_price: 20280 }] })],
+    ['a coin with an empty symbol', () => jsonResponse({ ...AWS_BODY, top: [{ id: 'x', symbol: '', current_price: 1 }] })],
+    ['a coin with a numeric symbol', () => jsonResponse({ ...AWS_BODY, top: [{ id: 'x', symbol: 1, current_price: 1 }] })],
+    ['a coin without a price', () => jsonResponse({ ...AWS_BODY, top: [{ id: 'x', symbol: 'x' }] })],
+    ['a string price', () => jsonResponse({ ...AWS_BODY, top: [{ id: 'x', symbol: 'x', current_price: '1' }] })],
+    ['a zero price', () => jsonResponse({ ...AWS_BODY, top: [{ id: 'x', symbol: 'x', current_price: 0 }] })],
+    ['a non-string name', () => jsonResponse({ ...AWS_BODY, top: [{ ...AWS_BODY.top[0], name: {} }] })],
+    ['a string market cap', () => jsonResponse({ ...AWS_BODY, top: [{ ...AWS_BODY.top[0], market_cap: '1e12' }] })],
+    ['a global without nested objects', () => jsonResponse({ ...AWS_BODY, global: {} })],
+    ['a non-object total_market_cap', () => jsonResponse({ ...AWS_BODY, global: { ...AWS_BODY.global, total_market_cap: 1 } })],
+    ['a string total_market_cap.hkd', () => jsonResponse({ ...AWS_BODY, global: { ...AWS_BODY.global, total_market_cap: { hkd: '1' } } })],
+    ['a string 24h change', () => jsonResponse({ ...AWS_BODY, global: { ...AWS_BODY.global, market_cap_change_percentage_24h_usd: '-0.8' } })],
+    ['an array market_cap_percentage', () => jsonResponse({ ...AWS_BODY, global: { ...AWS_BODY.global, market_cap_percentage: [56.3] } })],
+    ['a string btc dominance', () => jsonResponse({ ...AWS_BODY, global: { ...AWS_BODY.global, market_cap_percentage: { btc: '56.3' } } })],
+    ['an empty total_market_cap', () => jsonResponse({ ...AWS_BODY, global: { ...AWS_BODY.global, total_market_cap: {} } })],
+    ['a null total_market_cap.hkd', () => jsonResponse({ ...AWS_BODY, global: { ...AWS_BODY.global, total_market_cap: { hkd: null } } })],
+    ['an empty market_cap_percentage', () => jsonResponse({ ...AWS_BODY, global: { ...AWS_BODY.global, market_cap_percentage: {} } })],
+    ['a null btc dominance', () => jsonResponse({ ...AWS_BODY, global: { ...AWS_BODY.global, market_cap_percentage: { btc: null } } })],
+    [
+      'a missing 24h change',
+      () => jsonResponse({ ...AWS_BODY, global: { total_market_cap: { hkd: 23.4e12 }, market_cap_percentage: { btc: 56.3 } } }),
+    ],
+    ['a null 24h change', () => jsonResponse({ ...AWS_BODY, global: { ...AWS_BODY.global, market_cap_change_percentage_24h_usd: null } })],  ])('returns 502 without caching when the fallback gives %s', async (_, fallback) => {
+    const fetchMock = blockedFetch(fallback)
+    const cache = memoryCache()
+    const response = await handleCrypto(cryptoRequest('?symbols=btc'), cloudflareEnv, fetchMock, cache)
+    expect(response.status).toBe(502)
+    expect(await response.json()).toEqual({ error: 'Upstream unavailable', detail: 'CoinPaprika 402' })
+    expect(fallbackCalls(fetchMock)).toHaveLength(1)
+    expect(cache.store.size).toBe(0)
+  })
+
+  it('serves stale data when the fallback also fails', async () => {
+    const cache = await staleCache('?symbols=btc')
+    const fetchMock = blockedFetch(() => jsonResponse({}, 503))
+    const response = await handleCrypto(cryptoRequest('?symbols=btc'), cloudflareEnv, fetchMock, cache)
+    expect(response.status).toBe(200)
+    expect((await response.json()).held[0]).toMatchObject({ id: 'btc-bitcoin', current_price: 655200 })
+    expect(fallbackCalls(fetchMock)).toHaveLength(1)
+  })
+
+  it('keeps stale data when the fallback answers HTTP 200 with malformed coins', async () => {
+    const cache = await staleCache('?symbols=btc')
+    const before = await cache.store.get('https://small-tools.cache/crypto?symbols=btc').clone().text()
+    const fetchMock = blockedFetch(() => jsonResponse({ ...AWS_BODY, top: [{}], held: [{ id: 'btc-bitcoin' }] }))
+    const response = await handleCrypto(cryptoRequest('?symbols=btc'), cloudflareEnv, fetchMock, cache)
+    expect(response.status).toBe(200)
+    expect((await response.json()).held[0]).toMatchObject({ id: 'btc-bitcoin', current_price: 655200 })
+    expect(await cache.store.get('https://small-tools.cache/crypto?symbols=btc').clone().text()).toBe(before)
+  })
+
+  it.each([
+    ['a string', 'true'],
+    ['an empty object', {}],
+    ['a non-function fetch', { fetch: 'https://example.com' }],
+  ])('treats ASSETS as %s as not Cloudflare and never calls the fallback', async (_, ASSETS) => {
+    const fetchMock = blockedFetch()
+    const response = await handleCrypto(cryptoRequest('?symbols=btc'), { ...lambdaEnv, ASSETS }, fetchMock, memoryCache())
+    expect(response.status).toBe(502)
+    expect(fetchMock).toHaveBeenCalled()
+    expect(fallbackCalls(fetchMock)).toHaveLength(0)
+  })
+
+  describe('timeout', () => {
+    // The stalled fallbacks below never answer on their own, only rejecting once their signal aborts.
+    it('aborts a stalled fallback after 5 seconds and serves stale data', async () => {
+      const cache = await staleCache('?symbols=btc')
+      vi.useFakeTimers()
+      try {
+        let signal
+        const fetchMock = blockedFetch(
+          () =>
+            new Promise((_, reject) => {
+              signal = fallbackCalls(fetchMock)[0][1].signal
+              signal.addEventListener('abort', () => reject(signal.reason))
+            }),
+        )
+        const pending = handleCrypto(cryptoRequest('?symbols=btc'), cloudflareEnv, fetchMock, cache)
+        await vi.advanceTimersByTimeAsync(4999)
+        expect(signal.aborted).toBe(false)
+        await vi.advanceTimersByTimeAsync(1)
+        expect(signal.aborted).toBe(true)
+        const response = await pending
+        expect(response.status).toBe(200)
+        expect((await response.json()).held[0].id).toBe('btc-bitcoin')
+        expect(vi.getTimerCount()).toBe(0)
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('returns 502 when a stalled fallback is aborted and there is no stale data', async () => {
+      vi.useFakeTimers()
+      try {
+        const fetchMock = blockedFetch(
+          () =>
+            new Promise((_, reject) => {
+              const { signal } = fallbackCalls(fetchMock)[0][1]
+              signal.addEventListener('abort', () => reject(signal.reason))
+            }),
+        )
+        const cache = memoryCache()
+        const pending = handleCrypto(cryptoRequest('?symbols=btc'), cloudflareEnv, fetchMock, cache)
+        await vi.advanceTimersByTimeAsync(5000)
+        const response = await pending
+        expect(response.status).toBe(502)
+        expect(await response.json()).toEqual({ error: 'Upstream unavailable', detail: 'CoinPaprika 402' })
+        expect(cache.store.size).toBe(0)
+        expect(vi.getTimerCount()).toBe(0)
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('clears the timer after a successful fallback without aborting it', async () => {
+      vi.useFakeTimers()
+      try {
+        const fetchMock = blockedFetch()
+        const response = await handleCrypto(cryptoRequest('?symbols=btc'), cloudflareEnv, fetchMock, memoryCache())
+        expect(await response.json()).toEqual(AWS_BODY)
+        expect(vi.getTimerCount()).toBe(0)
+        expect(fallbackCalls(fetchMock)[0][1].signal.aborted).toBe(false)
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+  })
+
+  it('prefers a successful fallback over stale data and refreshes the cache', async () => {
+    const cache = await staleCache('?symbols=btc')
+    const fetchMock = blockedFetch()
+    const response = await handleCrypto(cryptoRequest('?symbols=btc'), cloudflareEnv, fetchMock, cache)
+    expect(await response.json()).toEqual(AWS_BODY)
+    const stored = cache.store.get('https://small-tools.cache/crypto?symbols=btc')
+    expect(Date.now() - Number(stored.headers.get('X-Fetched-At'))).toBeLessThan(1000)
+    expect(await stored.clone().json()).toEqual(AWS_BODY)
+  })
+
+  it('does not call the primary or the fallback while the cache is fresh', async () => {
+    const cache = memoryCache()
+    await handleCrypto(cryptoRequest('?symbols=btc'), {}, paprikaFetch(), cache)
+    const fetchMock = blockedFetch()
+    expect((await handleCrypto(cryptoRequest('?symbols=btc'), cloudflareEnv, fetchMock, cache)).status).toBe(200)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['CoinPaprika', lambdaEnv],
+    ['CoinGecko', { ...lambdaEnv, COINGECKO_API_KEY: 'demo' }],
+  ])('never calls itself without the ASSETS binding when %s fails (AWS Lambda)', async (_, env) => {
+    const fetchMock = blockedFetch()
+    const failed = await handleCrypto(cryptoRequest('?symbols=btc'), env, fetchMock, memoryCache())
+    expect(failed.status).toBe(502)
+
+    const stale = await handleCrypto(cryptoRequest('?symbols=btc'), env, fetchMock, await staleCache('?symbols=btc'))
+    expect(stale.status).toBe(200)
+    expect((await stale.json()).held[0].id).toBe('btc-bitcoin')
+
+    expect(fetchMock).toHaveBeenCalled()
+    expect(fallbackCalls(fetchMock)).toHaveLength(0)
+  })
+
+  it('routes /api/crypto through the fallback only for the Cloudflare env', async () => {
+    const fetchMock = blockedFetch()
+    vi.stubGlobal('fetch', fetchMock)
+    try {
+      const lambda = await worker.fetch(cryptoRequest('?symbols=btc'), lambdaEnv)
+      expect(lambda.status).toBe(502)
+      expect(fallbackCalls(fetchMock)).toHaveLength(0)
+
+      const cloudflare = await worker.fetch(cryptoRequest('?symbols=btc'), cloudflareEnv)
+      expect(cloudflare.status).toBe(200)
+      expect(await cloudflare.json()).toEqual(AWS_BODY)
+      expect(fallbackCalls(fetchMock)).toHaveLength(1)
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 })
 

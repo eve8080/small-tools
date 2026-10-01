@@ -257,6 +257,75 @@ async function loadCryptoMarket(symbols, env, fetchFn) {
   return { top, held, global, usd_hkd: usdHkd }
 }
 
+// CoinPaprika refuses Cloudflare's egress (402), so the Worker can borrow the AWS deployment's answer.
+const CRYPTO_FALLBACK_API = 'https://d22qpfwiw6tc.cloudfront.net/api/crypto'
+
+// Leave most of the Worker's execution window for the stale-cache or 502 answer.
+const CRYPTO_FALLBACK_TIMEOUT_MS = 5000
+
+const isObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value)
+const isNonEmptyString = (value) => typeof value === 'string' && value !== ''
+const isOptional = (check) => (value) => value === undefined || value === null || check(value)
+const isOptionalNumber = isOptional(Number.isFinite)
+
+// The coin fields the frontend reads, in the shape our own endpoint produces.
+function isCoin(coin) {
+  return (
+    isObject(coin) &&
+    isNonEmptyString(coin.id) &&
+    isNonEmptyString(coin.symbol) &&
+    isPositiveNumber(coin.current_price) &&
+    isOptional(isNonEmptyString)(coin.name) &&
+    isOptional(isNonEmptyString)(coin.image) &&
+    isOptionalNumber(coin.market_cap_rank) &&
+    isOptionalNumber(coin.price_change_24h) &&
+    isOptionalNumber(coin.price_change_percentage_24h) &&
+    isOptionalNumber(coin.market_cap)
+  )
+}
+
+function isGlobal(global) {
+  return (
+    isObject(global) &&
+    isObject(global.total_market_cap) &&
+    Number.isFinite(global.total_market_cap.hkd) &&
+    Number.isFinite(global.market_cap_change_percentage_24h_usd) &&
+    isObject(global.market_cap_percentage) &&
+    Number.isFinite(global.market_cap_percentage.btc)
+  )
+}
+
+function isCryptoMarketBody(body) {
+  return (
+    isObject(body) &&
+    Array.isArray(body.top) &&
+    Array.isArray(body.held) &&
+    [...body.top, ...body.held].every(isCoin) &&
+    (body.global === null || isGlobal(body.global)) &&
+    (body.usd_hkd === null || isPositiveNumber(body.usd_hkd))
+  )
+}
+
+// The AWS copy of this endpoint, or null when it fails, stalls, or answers with something unexpected.
+async function loadFromAwsFallback(symbols, fetchFn) {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), CRYPTO_FALLBACK_TIMEOUT_MS)
+  try {
+    const response = await fetchFn(`${CRYPTO_FALLBACK_API}?symbols=${symbols.join(',')}`, {
+      headers: { Accept: 'application/json', 'User-Agent': 'small-tools/1.0' },
+      signal: controller.signal,
+    })
+    if (!response.ok) return null
+    const body = await response.json()
+    if (!isCryptoMarketBody(body)) return null
+    return { top: body.top, held: body.held, global: body.global, usd_hkd: body.usd_hkd }
+  } catch {
+    return null
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
 export async function handleCrypto(request, env, fetchFn = fetch, cache = globalThis.caches?.default) {
   if (request.method !== 'GET') {
     return json({ error: 'Method not allowed' }, 405)
@@ -285,8 +354,12 @@ export async function handleCrypto(request, env, fetchFn = fetch, cache = global
   try {
     body = await loadCryptoMarket(symbols, env, fetchFn)
   } catch (error) {
-    if (cached) return json(await cached.json())
-    return json({ error: 'Upstream unavailable', detail: String(error?.message ?? error) }, 502)
+    // Only the Cloudflare Worker has the ASSETS binding; on Lambda this would call itself.
+    body = typeof env.ASSETS?.fetch === 'function' ? await loadFromAwsFallback(symbols, fetchFn) : null
+    if (!body) {
+      if (cached) return json(await cached.json())
+      return json({ error: 'Upstream unavailable', detail: String(error?.message ?? error) }, 502)
+    }
   }
 
   if (cache) {
