@@ -196,6 +196,17 @@ function paprikaToMarket(ticker) {
   }
 }
 
+function isPositiveNumber(value) {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0
+}
+
+// HKD per USD from two prices of the same asset, or null when either is unusable.
+function usdHkdRate(hkdPrice, usdPrice) {
+  if (!isPositiveNumber(hkdPrice) || !isPositiveNumber(usdPrice)) return null
+  const rate = hkdPrice / usdPrice
+  return isPositiveNumber(rate) ? rate : null
+}
+
 async function loadFromCoinPaprika(symbols, fetchFn) {
   const [tickers, global] = await Promise.all([
     // Ranked by market cap; the top 500 covers the held coins without a lookup per symbol.
@@ -210,7 +221,7 @@ async function loadFromCoinPaprika(symbols, fetchFn) {
   const held = ranked.filter((ticker) => wanted.has(String(ticker.symbol).toLowerCase())).map(paprikaToMarket)
 
   const btc = ranked.find((ticker) => ticker.id === 'btc-bitcoin')
-  const usdToHkd = btc ? btc.quotes.HKD.price / btc.quotes.USD.price : null
+  const usdToHkd = btc ? usdHkdRate(btc.quotes.HKD?.price, btc.quotes.USD?.price) : null
   return {
     top: ranked.slice(0, 10).map(paprikaToMarket),
     held,
@@ -239,7 +250,7 @@ async function loadCryptoMarket(symbols, env, fetchFn) {
     ),
     // Rates are quoted per BTC, so HKD per USD is their ratio.
     coingecko('/exchange_rates', env, fetchFn).then(
-      ({ rates }) => (rates?.hkd?.value && rates?.usd?.value ? rates.hkd.value / rates.usd.value : null),
+      (body) => usdHkdRate(body?.rates?.hkd?.value, body?.rates?.usd?.value),
       () => null,
     ),
   ])

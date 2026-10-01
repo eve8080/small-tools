@@ -132,14 +132,14 @@ const PAPRIKA_TICKERS = [
   { id: 'fake-btc', symbol: 'BTC', name: 'Fake', rank: 0, quotes: { USD: { price: 1 }, HKD: { price: 7.8 } } },
 ]
 
-function paprikaFetch() {
+function paprikaFetch(tickers = PAPRIKA_TICKERS) {
   return vi.fn((url) =>
     Promise.resolve(
       new Response(
         JSON.stringify(
           url.endsWith('/global')
             ? { market_cap_usd: 3e12, market_cap_change_24h: -0.8, bitcoin_dominance_percentage: 56.3 }
-            : PAPRIKA_TICKERS,
+            : tickers,
         ),
         { status: 200 },
       ),
@@ -147,7 +147,7 @@ function paprikaFetch() {
   )
 }
 
-function coingeckoFetch() {
+function coingeckoFetch(rates = { usd: { value: 84000 }, hkd: { value: 655200 } }) {
   return vi.fn((url) =>
     Promise.resolve(
       new Response(
@@ -155,7 +155,7 @@ function coingeckoFetch() {
           url.endsWith('/global')
             ? { data: { btc: 1 } }
             : url.endsWith('/exchange_rates')
-              ? { rates: { usd: { value: 84000 }, hkd: { value: 655200 } } }
+              ? { rates }
               : [{ symbol: 'btc' }],
         ),
         { status: 200 },
@@ -217,6 +217,43 @@ describe('handleCrypto', () => {
     const response = await handleCrypto(cryptoRequest('?symbols=btc'), { COINGECKO_API_KEY: 'demo' }, fetchMock, memoryCache())
     expect(response.status).toBe(200)
     expect((await response.json()).usd_hkd).toBeNull()
+  })
+
+  it.each([
+    ['a missing USD quote', { HKD: { price: 655200, percent_change_24h: -0.5, market_cap: 13e12 } }],
+    ['a zero USD price', { USD: { price: 0 }, HKD: { price: 655200, percent_change_24h: -0.5, market_cap: 13e12 } }],
+    ['a zero HKD price', { USD: { price: 84000 }, HKD: { price: 0, percent_change_24h: -0.5, market_cap: 13e12 } }],
+    ['a negative USD price', { USD: { price: -84000 }, HKD: { price: 655200, percent_change_24h: -0.5, market_cap: 13e12 } }],
+    ['a non-numeric USD price', { USD: { price: '84000' }, HKD: { price: 655200, percent_change_24h: -0.5, market_cap: 13e12 } }],
+  ])('keeps CoinPaprika market data with usd_hkd null for %s', async (_, btcQuotes) => {
+    const tickers = PAPRIKA_TICKERS.map((ticker) => (ticker.id === 'btc-bitcoin' ? { ...ticker, quotes: btcQuotes } : ticker))
+    const response = await handleCrypto(cryptoRequest('?symbols=eth'), {}, paprikaFetch(tickers), memoryCache())
+    expect(response.status).toBe(200)
+    const body = await response.json()
+    expect(body.usd_hkd).toBeNull()
+    expect(body.top.map((coin) => coin.symbol)).toEqual(['btc', 'eth'])
+    expect(body.held).toEqual([expect.objectContaining({ id: 'eth-ethereum', current_price: 20280 })])
+    expect(body.global).toEqual({
+      total_market_cap: { hkd: null },
+      market_cap_change_percentage_24h_usd: -0.8,
+      market_cap_percentage: { btc: 56.3 },
+    })
+  })
+
+  it.each([
+    ['a zero USD rate', { usd: { value: 0 }, hkd: { value: 655200 } }],
+    ['a negative HKD rate', { usd: { value: 84000 }, hkd: { value: -655200 } }],
+    ['a non-numeric USD rate', { usd: { value: '84000' }, hkd: { value: 655200 } }],
+    ['missing rates', null],
+  ])('keeps CoinGecko market data with usd_hkd null for %s', async (_, rates) => {
+    const response = await handleCrypto(
+      cryptoRequest('?symbols=btc'),
+      { COINGECKO_API_KEY: 'demo' },
+      coingeckoFetch(rates),
+      memoryCache(),
+    )
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ top: [{ symbol: 'btc' }], held: [{ symbol: 'btc' }], global: { btc: 1 }, usd_hkd: null })
   })
 
   it('serves stale data when the upstream fails, and 502 when there is none', async () => {
