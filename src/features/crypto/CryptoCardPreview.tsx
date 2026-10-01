@@ -15,7 +15,9 @@ export default function CryptoCardPreview() {
         <span className="tool-card-desc">比特幣 BTC</span>
         {btc ? (
           <span className="hk-stocks-card-figure">
-            <span className="hk-stocks-card-value">{formatCoinPrice(btc.priceHkd)}</span>
+            <span className="hk-stocks-card-value">
+              {market?.usdHkd ? formatCoinPrice(btc.priceHkd / market.usdHkd, 'USD') : formatCoinPrice(btc.priceHkd)}
+            </span>
             <span className="hk-stocks-card-change" data-change={changeDirection(btc.change24hPercent)}>
               24h {formatPercent(btc.change24hPercent)}
             </span>

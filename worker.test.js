@@ -150,7 +150,16 @@ function paprikaFetch() {
 function coingeckoFetch() {
   return vi.fn((url) =>
     Promise.resolve(
-      new Response(JSON.stringify(url.endsWith('/global') ? { data: { btc: 1 } } : [{ symbol: 'btc' }]), { status: 200 }),
+      new Response(
+        JSON.stringify(
+          url.endsWith('/global')
+            ? { data: { btc: 1 } }
+            : url.endsWith('/exchange_rates')
+              ? { rates: { usd: { value: 84000 }, hkd: { value: 655200 } } }
+              : [{ symbol: 'btc' }],
+        ),
+        { status: 200 },
+      ),
     ),
   )
 }
@@ -176,6 +185,7 @@ describe('handleCrypto', () => {
       image: 'https://static.coinpaprika.com/coin/eth-ethereum/logo.png',
     })
     expect(body.held[1].price_change_24h).toBeCloseTo(780)
+    expect(body.usd_hkd).toBeCloseTo(7.8)
     expect(body.global).toEqual({
       total_market_cap: { hkd: 3e12 * 7.8 },
       market_cap_change_percentage_24h_usd: -0.8,
@@ -192,11 +202,21 @@ describe('handleCrypto', () => {
     const body = await (
       await handleCrypto(cryptoRequest('?symbols=btc'), { COINGECKO_API_KEY: 'demo' }, fetchMock, memoryCache())
     ).json()
-    expect(body).toEqual({ top: [{ symbol: 'btc' }], held: [{ symbol: 'btc' }], global: { btc: 1 } })
+    expect(body).toEqual({ top: [{ symbol: 'btc' }], held: [{ symbol: 'btc' }], global: { btc: 1 }, usd_hkd: 7.8 })
     expect(fetchMock.mock.calls.map(([url]) => url)).toContain(
       'https://api.coingecko.com/api/v3/coins/markets?vs_currency=hkd&symbols=btc&include_tokens=top',
     )
     expect(fetchMock.mock.calls[0][1].headers).toMatchObject({ 'x-cg-demo-api-key': 'demo', 'User-Agent': 'small-tools/1.0' })
+  })
+
+  it('still answers when CoinGecko exchange rates are unavailable', async () => {
+    const base = coingeckoFetch()
+    const fetchMock = vi.fn((url, init) =>
+      url.endsWith('/exchange_rates') ? Promise.resolve(new Response('', { status: 500 })) : base(url, init),
+    )
+    const response = await handleCrypto(cryptoRequest('?symbols=btc'), { COINGECKO_API_KEY: 'demo' }, fetchMock, memoryCache())
+    expect(response.status).toBe(200)
+    expect((await response.json()).usd_hkd).toBeNull()
   })
 
   it('serves stale data when the upstream fails, and 502 when there is none', async () => {

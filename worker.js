@@ -12,7 +12,7 @@
 // /api/metals — spot gold, silver, platinum and palladium plus USD/HKD, from the same feed.
 //
 // And /api/crypto?symbols=btc,eth — crypto market data (top 10 coins, the held coins, global
-// totals) in HKD, cached at the edge for a minute. It comes from CoinPaprika's free API, which
+// totals) in HKD, plus the USD→HKD rate as usd_hkd, cached at the edge for a minute. It comes from CoinPaprika's free API, which
 // needs no key; CoinGecko's keyless API rate-limits Cloudflare's shared IPs (HTTP 429).
 // Optional secret: COINGECKO_API_KEY — with a free CoinGecko "demo" key, CoinGecko is used instead.
 
@@ -214,6 +214,7 @@ async function loadFromCoinPaprika(symbols, fetchFn) {
   return {
     top: ranked.slice(0, 10).map(paprikaToMarket),
     held,
+    usd_hkd: usdToHkd,
     global: global
       ? {
           total_market_cap: { hkd: usdToHkd ? global.market_cap_usd * usdToHkd : null },
@@ -227,7 +228,7 @@ async function loadFromCoinPaprika(symbols, fetchFn) {
 async function loadCryptoMarket(symbols, env, fetchFn) {
   if (!env.COINGECKO_API_KEY) return loadFromCoinPaprika(symbols, fetchFn)
 
-  const [top, held, global] = await Promise.all([
+  const [top, held, global, usdHkd] = await Promise.all([
     coingecko('/coins/markets?vs_currency=hkd&order=market_cap_desc&per_page=10&page=1', env, fetchFn),
     symbols.length > 0
       ? coingecko(`/coins/markets?vs_currency=hkd&symbols=${symbols.join(',')}&include_tokens=top`, env, fetchFn)
@@ -236,8 +237,13 @@ async function loadCryptoMarket(symbols, env, fetchFn) {
       (body) => body.data ?? null,
       () => null,
     ),
+    // Rates are quoted per BTC, so HKD per USD is their ratio.
+    coingecko('/exchange_rates', env, fetchFn).then(
+      ({ rates }) => (rates?.hkd?.value && rates?.usd?.value ? rates.hkd.value / rates.usd.value : null),
+      () => null,
+    ),
   ])
-  return { top, held, global }
+  return { top, held, global, usd_hkd: usdHkd }
 }
 
 export async function handleCrypto(request, env, fetchFn = fetch, cache = globalThis.caches?.default) {

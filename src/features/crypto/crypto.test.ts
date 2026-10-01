@@ -111,6 +111,7 @@ describe('fetchCryptoMarket', () => {
           top: [rawCoin],
           held: [rawCoin, { ...rawCoin, id: 'other-btc', current_price: 1 }],
           global: { total_market_cap: { hkd: 30e12 }, market_cap_change_percentage_24h_usd: 1.5, market_cap_percentage: { btc: 56.2 } },
+          usd_hkd: 7.8,
         }),
     })
 
@@ -121,6 +122,15 @@ describe('fetchCryptoMarket', () => {
     expect(result.data.top[0]).toMatchObject({ name: 'Bitcoin', priceHkd: 659730, rank: 1 })
     expect(result.data.held.btc).toMatchObject({ id: 'bitcoin', change24hHkd: -1559.6 })
     expect(result.data.global).toEqual({ marketCapHkd: 30e12, marketCapChange24hPercent: 1.5, btcDominance: 56.2 })
+    expect(result.data.usdHkd).toBe(7.8)
+  })
+
+  it('leaves usdHkd null when the Worker gives no usable rate', async () => {
+    for (const usd_hkd of [undefined, null, 0, 'x']) {
+      const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ top: [rawCoin], usd_hkd }) })
+      const result = await fetchCryptoMarket([], fetchMock)
+      expect(result.ok && result.data.usdHkd).toBeNull()
+    }
   })
 
   it('reports failures', async () => {
