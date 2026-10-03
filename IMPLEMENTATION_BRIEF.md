@@ -1,45 +1,76 @@
-# Implementation Brief — PR #3 BTC price in USD
+# Implementation Brief — Customizable home widgets
 
-## Context
+## Goal
 
-GitHub PR #3 (`kennethshso:btc-price-usd` into `eve8080:main`) adds `usd_hkd` to `/api/crypto` and converts the BTC card's live HKD price to USD. The initial PR passed the existing test, lint, typecheck, and build commands, but independent review found a blocking partial-upstream failure in the CoinPaprika path.
+Let each browser customize the Small Tools home dashboard by rearranging tool widgets and hiding or showing selected widgets. Preferences are local to that browser/device and require no account, backend, or deployment change.
 
-## Required fix
+## UX and behavior
 
-In `worker.js`, make USD/HKD derivation resilient to incomplete or malformed CoinPaprika data:
+- Add a clearly labelled `自訂工具` control near the home-page heading.
+- Activating it opens an inline customization panel on the home page.
+- The panel lists every registered tool with:
+  - a show/hide checkbox;
+  - accessible move-up and move-down controls for ordering.
+- Reordering must work with pointer/mouse drag-and-drop on the visible dashboard as well as the accessible move buttons in the panel. Do not add a drag-and-drop dependency.
+- While customization mode is active, prevent an accidental card navigation caused by dragging; normal card links must keep working outside a drag.
+- Hidden widgets disappear from the dashboard but remain available in the customization panel so they can be restored.
+- Include `重設預設` to restore the current source-defined tool order and make all tools visible.
+- Include a close/done control. Changes apply immediately.
+- If all widgets are hidden, show a helpful empty-state message with a way to reopen customization.
 
-- Validate the BTC `quotes.USD.price` and `quotes.HKD.price` components before division.
-- Accept only finite positive numeric components and expose only a finite positive `usd_hkd`.
-- If either component is missing, zero, negative, non-numeric, non-finite, or otherwise unusable, continue returning the otherwise-valid crypto market data with `usd_hkd: null` instead of failing `/api/crypto`.
-- Preserve existing top/held/global behavior and the frontend's HKD fallback.
-- Apply an equivalent finite-positive output contract to the CoinGecko rate calculation if needed, without turning optional exchange-rate failure into endpoint failure.
+## Persistence and data handling
 
-## Deployment hotfix — Cloudflare upstream fallback
+- Store only tool IDs/order/visibility in `localStorage`; no server call and no personal data.
+- Use one versioned storage key.
+- Treat stored data as untrusted:
+  - ignore malformed JSON and non-array/invalid values;
+  - discard unknown tool IDs;
+  - de-duplicate IDs;
+  - append newly registered tools in source order and show them by default;
+  - recover to defaults if storage is unavailable or throws.
+- Persist immediately after a valid user change.
 
-Live verification after merging PR #3 found that the AWS deployment serves `/api/crypto?symbols=` successfully, but CoinPaprika returns HTTP 402 to the Cloudflare Worker egress, leaving the Cloudflare home-page crypto card unavailable immediately after deployment.
+## Accessibility and responsive design
 
-Implement a narrow production fallback in `worker.js`:
+- All controls need accessible names and keyboard operation.
+- Use semantic buttons/checkboxes and visible focus styles.
+- Announce or otherwise expose the current order through DOM order; avoid an inaccessible drag-only design.
+- Keep the panel and controls usable at mobile and desktop widths.
+- Preserve the existing visual language and all tool-card live previews.
 
-- Keep CoinPaprika/CoinGecko as the primary upstream and preserve the existing Worker cache behavior.
-- Only when primary crypto loading fails and the Cloudflare-only `env.ASSETS` binding is present, request the already deployed AWS API at `https://d22qpfwiw6tc.cloudfront.net/api/crypto` with the same validated symbol list.
-- Do not use the AWS fallback when running inside AWS Lambda, preventing recursion.
-- Accept the fallback only for an HTTP-success response with the complete expected crypto JSON shape; otherwise retain the existing stale-cache or 502 behavior. Validate every coin entry's required identifiers and finite numeric price, plus the nested global fields consumed by the frontend, so malformed HTTP-200 data cannot replace valid stale data.
-- Detect Cloudflare by requiring an actual `env.ASSETS.fetch` function, not merely a truthy value, preventing accidental recursion from an unrelated Lambda environment variable.
-- Bound the AWS fallback request with an explicit timeout/abort signal so a stalled fallback cannot consume the remaining Worker execution window.
-- Cache a successful fallback response exactly like a primary response.
-- Add tests for successful Cloudflare fallback, fallback failure, stale-cache precedence/behavior, and proof that AWS/Lambda does not call itself.
-- Do not modify frontend behavior, dependencies, secrets, or unrelated features.
+## TDD requirements
 
-## Tests
+Use strict RED → GREEN → REFACTOR vertical slices. Tests must be written and observed failing before production implementation.
 
-Add focused tests covering the CoinPaprika path with unusable FX components, including at minimum a missing USD quote and zero or invalid values. Assert that:
+Add focused tests covering at least:
 
-- `/api/crypto` still returns HTTP 200 when market data remains usable.
-- `usd_hkd` is `null` for unusable inputs.
-- Valid inputs still return approximately `7.8`.
-- Existing stale-cache and frontend fallback behavior remain passing.
+1. Default state renders all tools in source order.
+2. Hiding a tool removes its dashboard card and persists the choice.
+3. A hidden tool can be shown again.
+4. Moving a tool changes DOM order and persists the order.
+5. Pointer/mouse drag-and-drop changes order.
+6. Saved preferences restore on a fresh render.
+7. Malformed/stale preferences safely normalize: unknown/duplicate IDs removed and new tools appended visible.
+8. Reset restores source order and visibility.
+9. All-hidden empty state remains recoverable.
+10. Storage read/write exceptions do not crash the page.
 
-Run:
+Keep tests deterministic and avoid testing implementation details.
+
+## Likely scope
+
+- `src/pages/HomePage.tsx`
+- `src/pages/HomePage.test.tsx`
+- a small dedicated preferences module and its tests if that keeps validation/persistence logic clear;
+- `src/components/ToolCard.tsx` only if needed for drag semantics/navigation safety;
+- `src/app/app.css` for responsive and accessible controls;
+- `README.md` for the new dashboard behavior.
+
+Do not modify APIs, worker/lambda/deployment code, dependencies, unrelated tools, credentials, or generated `dist/` output.
+
+## Required verification
+
+Run all commands and leave the tree uncommitted:
 
 ```bash
 npm test
@@ -48,16 +79,19 @@ npm run typecheck
 npm run build
 ```
 
+Also exercise the home page manually at representative mobile and desktop widths, verifying reorder, hide/show, reset, persistence after reload, and normal link navigation.
+
 ## Boundaries
 
-- Do not change dependencies.
-- Do not refactor unrelated code or alter other tools.
-- Do not expose or edit production secrets.
-- Do not commit, push, merge, or deploy; Eve performs those actions after independent verification.
+- Do not add dependencies.
+- Do not commit, push, merge, or deploy.
+- Do not access or change production systems, accounts, secrets, or remote data.
+- Preserve existing tool routes and live preview behavior.
 
 ## Completion criteria
 
-- The partial CoinPaprika response reproduced by review no longer returns 502.
-- New regression tests fail on the original PR revision and pass after the fix.
-- All required verification commands pass.
-- The resulting diff is limited to this fix, its tests, and the required project context documents.
+- Every behavior above is implemented and covered by tests that were first observed failing.
+- Existing tests and all required verification commands pass.
+- The UI is usable with mouse, touch/keyboard-accessible controls, and narrow/mobile layouts.
+- Preferences survive reload and fail safely when corrupt or unavailable.
+- Diff is limited to this feature, tests, docs, and this brief.
